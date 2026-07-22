@@ -14,9 +14,11 @@ the predecessor's SMS-era policy for this product.
   devices of family members you have shared with. The server stores these
   messages briefly as ciphertext (until delivered or expired) and can never
   read them.
-- **On your device** — your local history (own and received locations),
-  geofence definitions, the activity ledger, and your consent settings, in a
-  local store on the device.
+- **On your device** — other members' **last-known location only** (a new
+  position overwrites the previous one; the app does not build a movement trail
+  of anyone), your own location history if you opt to keep it (local-only, off
+  by default), geofence definitions and their enter/exit events, the activity
+  ledger, and your consent settings, in a local store on the device.
 - **On your family's server** — the relay's minimal records: the family
   account, each device's public key and push endpoint, encrypted key bundles,
   queue records, and undelivered encrypted messages. No plaintext content,
@@ -74,7 +76,11 @@ reference). The family member hosting it:
   their time-to-live.
 - Delivered messages are deleted from the server on acknowledgment.
 - Revoking a device removes its server records and retires its mailboxes.
-- Your local history is yours: stored on your device, deletable in the app.
+- No movement trails. The app keeps only the last-known position of the members
+  who share with you, overwriting it on each update — it does not accumulate a
+  history of where a family member has been. Your own location history is the
+  one exception you control: off by default, kept locally only if you turn it on.
+- Your local data is yours: stored on your device, deletable in the app.
 - The server's entire state is one database file under the host's control —
   including its backups, which the host is responsible for protecting and
   pruning.

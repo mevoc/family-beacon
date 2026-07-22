@@ -135,8 +135,11 @@ Client side: each device keeps its own local store (e.g. Room on Android),
 encrypted at rest, holding what the original sketch put on the server:
 
 - family members and their devices (mirrored from Sund's device list)
-- location history (own and received)
-- geofences
+- others' last-known location only — a received location overwrites the previous
+  one; the app deliberately does not accumulate a movement trail of a family
+  member (see Long-Term Features → Location history, and PRIVACY.md). The user's
+  own location history is a separate, opt-in, local-only choice.
+- geofences, and their discrete enter/exit events (bounded, not a track log)
 - the transparency event log (the ethical line's activity ledger)
 - per-feature consent state and settings
 
@@ -230,8 +233,13 @@ Nothing more should be required. Backup is copying one database file.
 
 Long-Term Features
 
-- Live location
-- Location history (under consideration)
+- Live location (interval share + on-demand pull; a location fix doubles as a
+  liveness heartbeat)
+- Location history — decided: no movement trail of others is built. Received
+  location is kept as last-known only; the safety case needs "where now" plus
+  discrete safe-zone events, not a track log. A user's own history stays a separate
+  opt-in, local-only choice. See PRIVACY.md and docs/FamilyBeacon-DesignGuide.md
+  (Live location → Retention).
 - Geofences
 - Battery status
 - Contact me urgently

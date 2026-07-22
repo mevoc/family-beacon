@@ -222,39 +222,125 @@ Open items
 
 ---
 
-Proposed for v0.2 — presence heartbeat (candidate, not yet specified)
+Presence heartbeat — v0.2 specification
 
-Driven by the app design guide's family-state widget (FamilyBeacon-DesignGuide.md
-→ Signal-to-state mapping): an observer cannot honestly judge whether a member is
-offline without knowing that member's expected check-in cadence. Proposed, pending
-a full spec and test vectors:
+Defined for protocol v0.2. It is not one of the v1 wire types above and ships only
+when its test vectors do; until then a v0.1 client treats a presence message as an
+unknown type — ledger and ignore, per Versioning. Motivation: the family-state
+widget (FamilyBeacon-DesignGuide.md → Signal-to-state mapping) needs an honest "is
+this member reachable" signal, and an observer cannot judge silence without knowing
+the producer's expected cadence. Presence supplies both, as a consent-gated feature
+— unlike Sund's account-wide last_seen, which cannot be scoped to a single observer.
 
-- presence (new message type) — a lightweight "I am alive" ping. Emitted only when
-  the device would otherwise be silent within its declared interval; any other
-  message already serves as a heartbeat, so an active location stream costs no
-  extra presence traffic. Requires a presence grant — a new consent feature using
-  the same directional, pairwise machinery as location and battery; default deny.
-- Heartbeat interval — carried as a config_update value (owner_rev): one per
-  producer, role-defaulted and user-overridable, broadcast to the producer's
-  granted observers. Observers judge freshness against the received interval and
-  fall back to a role default until they have it. Deliberately one interval per
-  producer, not per observer.
-- Consent additions — presence joins the consent feature set
-  (location | battery | geofence | presence | …); ungranting an observer emits the
-  usual consent_update revoke, and that observer drops to "not shared" for
-  liveness. This resolves entirely within the existing consent state machine.
+The message
 
-Note on Sund's last_seen: the management-plane device list carries a last_seen the
-whole account can see. It is deliberately not the liveness signal here — it cannot
-be scoped to a consenting observer, whereas a presence feature can. Battery
-crossing thresholds likewise stay client-local (the producer decides at what level
-to emit a battery message); only the per-observer selection is on the wire, via
-consent.
+    presence
+        interval_s (required, integer > 0): the producer's current expected
+        maximum gap, in seconds, between messages of any type to this observer.
+        No location, no battery, no content — a pure liveness beat, meaning
+        "sender was alive as of the envelope's sent time, and commits to being
+        heard from again within interval_s." Requires a presence grant. Short TTL
+        (recommended ~2x interval_s): only the most recent presence is meaningful,
+        so a superseded beat is safe to expire unread. Normal priority — a
+        heartbeat carries no wake-up urgency of its own.
 
-This is a candidate, not a commitment: it adds one message type, one consent
-feature, and a config convention, all inside the existing envelope and consent
-rules — and it must ship with test vectors like every other type before it is
-v0.2.
+Heartbeat contract (producer side)
+
+- Any message of any type counts as a heartbeat. A producer already sending
+  location or battery to an observer is proving liveness and MUST NOT also emit a
+  redundant presence ping in the same window — presence pings exist only to fill
+  silence. This piggyback rule is what makes presence near-free for members who
+  already share location.
+- To each observer holding a presence grant, the producer ensures at least one
+  message arrives per interval_s (best-effort); if ordinary traffic will not, it
+  sends a presence ping.
+- The producer sends a presence ping immediately — not only on the idle timer —
+  when it grants presence to an observer (this establishes interval_s for a fresh
+  pair), when it changes interval_s, and when it returns from its own downtime.
+
+Freshness evaluation (observer side)
+
+- last_heard(producer) = the newest envelope sent value across all messages
+  received from that producer on the pair, presence and content alike. A message
+  whose sent is not newer than the current last_heard does not move it (this
+  absorbs reordering and at-least-once redelivery).
+- age = now - last_heard, clamped to >= 0 to guard against a future-dated sent
+  (clock skew between devices).
+- interval_s is taken from the most recently received presence ping; until one has
+  arrived, the observer uses the role-based default (design guide). The widget's
+  Signal-to-state mapping turns age and interval_s into state (fresh, aging,
+  offline). This spec provides the inputs; the thresholds are the app's.
+
+Consent
+
+- presence joins the consent feature set alongside location, battery and geofence;
+  consent_update carries it (feature = presence). Default deny, like every feature
+  — a fresh pairing shares no presence.
+- Directional and pairwise, enforced at the producer: revoking an observer's
+  presence grant stops presence pings to them at once and emits the usual
+  consent_update revoke. That observer's widget drops to "not shared" for liveness
+  with no residual signal — the reason presence is preferred to last_seen.
+
+Ledgering
+
+- The presence grant and revoke are discrete, individually ledgered events, like
+  any consent change.
+- Individual heartbeats are telemetry: recorded as ongoing presence sharing and
+  surfaced aggregated (an active-sharing indicator plus a last-beat time), not one
+  ledger entry per beat. This is the same treatment high-frequency location updates
+  require, and it keeps the ledger legible without exempting any type from
+  transparency — the user always sees that presence is being shared and when it
+  last beat. Formalizing telemetry aggregation in the ledger, once, for presence
+  and location together is an open item.
+
+Delivery cost (stated honestly)
+
+- Every message arrival wakes the owning (observer) device through Sund's push-ping
+  fan-in; Sund has no silent-delivery class today. So a presence ping in an
+  otherwise idle pair costs one wake-up per observer per interval_s. Keep interval_s
+  conservative for background liveness — role defaults on the order of minutes to
+  tens of minutes, never seconds — and rely on the piggyback rule so active sharing
+  adds no presence traffic at all. A future Sund low-priority / no-wake drain class
+  could remove even the idle-pair wakes; it is out of scope here and not required
+  for correctness.
+
+Versioning and mixed families
+
+- A v0.2 client advertises support in member_info (proto_v). A v0.1 observer that
+  receives a presence message ledgers it as unknown and ignores it — it simply has
+  no presence-based liveness for that member — and a v0.2 producer needs no
+  knowledge of an observer's version to stay correct.
+
+Test vectors (gating, like every type)
+
+- A canonical valid presence envelope; a malformed one missing interval_s (and one
+  with interval_s <= 0); an interval-change sequence; and consent_update grant/
+  revoke for feature = presence — all added to the shared vectors that gate every
+  implementation (beacon-protocol libraries and beaconsim).
+
+Open sub-points
+
+- Role-based default intervals and the exact freshness thresholds live in the
+  design guide (open decisions 3 and 9); this spec is agnostic to their values.
+- Telemetry ledger aggregation (above) should be formalized once, covering
+  presence and location.
+
+Related v0.2 companions (not yet specified)
+
+Surfaced by the design guide's Feature & member controls, to be specified with the
+same discipline as presence (bodies, consent, ledgering, test vectors):
+
+- Live location, interval + pull. The interval-share half reuses the existing v1
+  location type with a producer-declared max-gap interval (a location fix is itself
+  a heartbeat — see the contract above). The on-demand half adds a location_request
+  message; the reply is an ordinary location message, gated by the location grant
+  and ledgered as a discrete event on both sides. Client-side retention is
+  last-known-only by default (no movement trail) — a client policy, not a wire
+  concern, stated in the design guide and PRIVACY.md.
+- Contact me urgently — a small inbound nudge type short of sos, gated by its own
+  allow grant.
+- Pause — likely an "until"-carrying form of consent_update so a paused share
+  renders as benign Paused at the observer rather than as staleness.
 
 ---
 

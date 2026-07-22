@@ -257,7 +257,10 @@ Signals the widget can read
   consent-gated feature is honest per-observer, which last_seen cannot be — Sund
   exposes it to the whole account.)
 - Location freshness — age of the member's latest location update. Requires a
-  location grant; a soft/informational signal only, never the hard offline call.
+  location grant. A location fix is a full heartbeat: for a member sharing live
+  location on an interval, location age drives liveness exactly as a presence beat
+  does, so such a member needs no separate presence grant. (When location is not
+  shared, presence carries liveness; when neither is, the member is "not shared.")
 - Battery — level_pct + charging, sent by the producer on threshold crossings.
   Requires a battery grant; the crossing thresholds are the producer's own config
   (below).
@@ -275,9 +278,10 @@ checks in every 30 minutes and alarming for one that checks in every 5. So:
 
 - Heartbeat interval — each producer declares one expected interval, seeded by a
   role-based default (e.g. a child's device tighter than an adult's) and
-  user-overridable. It is broadcast to the producer's selected observers, who judge
-  freshness against it. Until an observer has received it, they fall back to the
-  role-based default.
+  user-overridable. It rides in the presence heartbeat itself (the interval_s
+  field), so every beat is self-describing; observers judge freshness against the
+  most recent value and fall back to the role default until a beat arrives. See
+  FamilyBeacon-Protocol.md → Presence heartbeat.
 - Battery thresholds — the producer's own config for when a crossing is emitted
   (e.g. notify at ≤ 15%). These stay producer-local: the observer receives the
   resulting crossing event, not the policy. Broadcasting the numeric threshold to
@@ -294,10 +298,11 @@ Scope, deliberately (this is where the design stops short of overkill):
   scope: the interval is a property of the device's behavior, not of the
   relationship.
 
-Mechanically this rides existing protocol pieces — consent_update for selection,
-config_update (owner_rev) for the interval/threshold values — plus one small new
-element (a presence heartbeat message type and an interval field), tracked as a
-v0.2 candidate in the protocol doc, not yet a spec change.
+Mechanically this rides mostly existing protocol pieces — consent_update for
+selection; battery thresholds stay producer-local (events, not policy, on the
+wire) — plus the presence heartbeat message type, which carries its own interval_s.
+Now specified for v0.2 in the protocol doc (Presence heartbeat), gated on test
+vectors like every type.
 
 Per-member state (evaluate top-down; first match wins)
 
@@ -321,7 +326,10 @@ the family aggregate: a member who has granted me nothing is a consent fact, not
 problem, and must never be colored as an alarm — doing so would pressure sharing
 (a dark pattern, principle 4). Because presence is now a consent-gated feature, a
 member who unselects me for heartbeat reads as fully "not shared" — there is no
-residual account-level liveness leaking around the grant.
+residual account-level liveness leaking around the grant. Paused (from the "pause
+1h" control) is a sibling benign state: a temporary, explicit "not shared until
+~HH:MM" that likewise never raises the aggregate — distinct from offline/red, which
+it must never be mistaken for. See Feature & member controls.
 
 Family aggregate (what the single circle shows)
 
@@ -377,6 +385,145 @@ Platform reality (constrains the design, so stated here)
 This surface raises the stakes on defining the freshness thresholds (open decision
 3): the widget makes "fresh vs. stale vs. offline" directly visible, so those
 thresholds become user-facing, not internal.
+
+---
+
+Feature & member controls
+
+Where the widget is the ambient glance, this is the depth a tap leads to: two
+surfaces, a per-feature control and a per-member sharing matrix. Together they are
+the "consent overview" named in Product scope, and the ledger's forward-looking
+twin — the ledger says what happened, these say what is set.
+
+Share vs. allow — two directions of consent
+
+A distinction the controls make explicit, because the features fall into two
+kinds:
+
+- Share (outbound) — I push my data to a member: heartbeat/presence, live location
+  on a producer-set interval (see Live location below), safe-zone enter/exit events,
+  and battery-level events. The toggle means "do I emit this to them."
+- Allow (inbound) — I permit a member to reach or pull from me: send me an "urgently
+  contact me" nudge, or request my most-current location on demand (a pull layered
+  on the live-location share, not a separate feature). The toggle means "may they
+  ask." A request I have not allowed never reaches me as an interruption (enforced
+  at my device, like all consent).
+- Mandatory (inbound, not toggleable) — receiving a family member's SOS. This
+  cannot be switched off; it is the one thing a fresh pairing already permits
+  (ETHICS.md). Shown in the matrix as present and locked, with a one-line why.
+
+Feature map (per member, from my point of view):
+
+| Feature                          | Direction     | Wire type (status)              |
+|----------------------------------|---------------|---------------------------------|
+| Heartbeat / presence             | share         | presence (v0.2)                 |
+| Live location (interval + pull)  | share + allow | location (v1) + location_request (v0.2) |
+| Safe zones (enter/exit)          | share         | geofence_event (v1)             |
+| Battery level                    | share         | battery (v1)                    |
+| Contact me urgently              | allow         | needs a nudge type — not yet    |
+| Panic / SOS (receive)            | mandatory     | sos (v1), always on             |
+
+Per-feature controls
+
+For each feature the owning user has, mirroring the old SMS Android app's
+per-feature screens:
+
+- Enable / disable — a global on/off for the feature on my device, independent of
+  who I share it with. Disabling stops the capability entirely (nothing emitted,
+  no requests honored).
+- Pause 1h — a one-tap temporary suspend that auto-resumes. The safety-first
+  affordance: "I want an hour of privacy" without hunting through settings. Must be
+  honest — see Pause and the state model below.
+- Config — the feature's settings (heartbeat interval, battery thresholds, safe-zone
+  definitions, location accuracy/cadence, etc.). Several of these screens port
+  fairly directly from family-beacon-android.
+
+The two axes compose: a feature can be globally enabled but shared with only some
+members (the matrix), and can be paused across the board (the pause control) while
+its per-member grants stay intact and resume with it.
+
+The member matrix
+
+- A full list of family members, one row each, with a column per feature; each cell
+  is the share/allow toggle for that (feature, member) pair. This is exactly the
+  protocol's per-(feature, observer) consent set, made visible and editable in one
+  place.
+- Group the columns by direction — "I share with them" and "I allow them to" — so a
+  mixed-direction row does not read ambiguously. The SOS column shows locked-on.
+- This matrix is my outbound/allow grants — what I emit or permit. It is distinct
+  from the home/widget view, which shows what I receive from others. Keeping "what I
+  share" and "what I see" as separate surfaces avoids the classic confusion of a
+  single screen that conflates both directions.
+- Default deny holds: a newly paired member's row is all-off except the locked SOS
+  cell.
+
+Live location
+
+Live location was impossible in the SMS predecessor; the client/server architecture
+makes it a real option, and it is modeled on the heartbeat rather than as a separate
+request/response feature:
+
+- Interval share — a producer sharing live location streams its position on a
+  producer-set interval (a maximum gap, sent sooner on significant movement), the
+  same shape as presence. Because a location fix is itself proof of liveness, an
+  active location share is a heartbeat: a member sharing live location need not also
+  share presence separately, and their location freshness feeds the widget's
+  liveness directly (see the note in Signals). The interval is per-producer config,
+  role-defaulted, like the heartbeat interval.
+- On-demand pull — layered on the same grant: an observer can request the
+  most-current fix (e.g. "where is Emma right now"). It is a convenience on top of
+  the stream, not a separate feature — but the pull is a discrete, visible act and
+  is ledgered as such on both sides (who asked, when), because asking is more
+  pointed than passively receiving the stream.
+- A lower "on-demand only" tier — allow requests without continuously streaming — is
+  a possible privacy-minimizing setting; whether to offer it is a sub-decision.
+
+Retention — last-known, not a trail
+
+Received live location is retained as the member's last-known position only; the
+app deliberately does not accumulate it into a movement history. Building a trail of
+where a family member has been is the surveillance artifact the whole project exists
+to avoid, and the safety use case ("where are they now, can I reach them") needs
+only the current fix plus discrete safe-zone events — not a track log. Therefore:
+
+- Others' locations: keep the latest fix, overwrite on update; no per-fix trail.
+  Any opt-in "history of a member" would have to be exactly that — opt-in, both
+  sides aware, off by default — like receipts; the default builds nothing.
+- Safe-zone enter/exit stay as discrete, consented, individually meaningful events
+  (that is the "was at school at 3pm" signal, bounded and legible — not a trail).
+- My own location history is a separate choice (it is my own data); a user may keep
+  their own trail locally if they want it, independent of the above.
+- Ledger: consistent with the telemetry-aggregation rule — live location shows as
+  active sharing with a last-update time, never a per-fix log.
+
+This resolves ARCHITECTURE.md's former "Location history (under consideration)" as
+no-trail-by-default, and is reflected in PRIVACY.md (Data and where it lives; Data
+retention and deletion) and ARCHITECTURE.md (Database; Long-Term Features).
+
+Pause and the state model
+
+Pausing a share must not masquerade as a problem. If I pause my heartbeat or
+location, my observers' widgets must show a benign paused state — a temporary,
+explicit "not shared (until ~HH:MM)" — never offline/red, which would fire false
+alarms across the family. That requires the pause to be communicated to affected
+observers (a temporary consent revoke, ideally carrying the resume time), not just
+a silent local stop. Resume restores the prior grants automatically. This adds a
+benign Paused variant to the widget's per-member states, alongside Not shared.
+
+Protocol implications (flagged, to specify next like presence)
+
+- Live location on-demand pull needs a location_request/response pair: a
+  location_request from the asker and the existing location message as the reply,
+  gated by the location grant, ledgered as a discrete event on both sides (who
+  asked, when). The interval-share half reuses the existing location type with a
+  producer-declared max-gap interval, mirroring presence.
+- Contact me urgently (allow) needs a small nudge message type (an inbound
+  attention signal short of SOS), gated by its allow grant.
+- Pause likely wants an explicit form on consent_update (a revoke carrying an
+  "until" / auto-resume hint) so observers can render Paused rather than guessing.
+
+None of these change the server (all ride Sund's blind queues); they are new
+beacon-protocol types and are tracked as open decisions below.
 
 ---
 
@@ -451,12 +598,28 @@ date them as we iterate.
    Shape decided: heartbeat is a consent-gated presence feature with a
    producer-declared, role-defaulted interval; selection is per-observer,
    parameters are per-producer (not a per-observer matrix); battery sends crossing
-   events, thresholds stay producer-local. Depends on the v0.2 protocol candidate
-   (presence type + interval config) — see FamilyBeacon-Protocol.md.
+   events, thresholds stay producer-local. The presence type (carrying interval_s)
+   is now specified for v0.2 — see FamilyBeacon-Protocol.md → Presence heartbeat.
    (The earlier presence-suppression sub-question is resolved: consent-gating
    presence makes it suppressible per member, with no last_seen leak.)
 10. Widget set — how many widgets and which info densities/sizes to ship first
     (minimal / medium / rich), and deep-link targets per state. Open.
+11. Location model — Decided (leaning): live location is an interval share modeled
+    on the heartbeat (a location fix is a heartbeat), plus an on-demand pull layered
+    on the same grant; retention is last-known-only, no movement trail built by
+    default (see Live location). Remaining sub-questions: whether to offer an
+    "on-demand only" tier (allow requests without streaming), and whether any opt-in
+    history exists at all. No-trail decision confirmed and propagated to
+    ARCHITECTURE.md (Database; Long-Term Features) and PRIVACY.md.
+12. Allow-features protocol types — location_request (request/response, gated by the
+    location grant) and a "contact me urgently" nudge type, both ledgered as discrete
+    events. To be specified like presence was. Open.
+13. Pause semantics — the "pause 1h" affordance must be communicated so observers
+    render a benign Paused state, not offline/red; likely an "until"-carrying form
+    of consent_update. Confirm mechanism and the widget's Paused state. Open.
+14. Member matrix layout — column grouping by direction (share vs. allow), how the
+    locked SOS column reads, and keeping "what I share" separate from "what I see."
+    Open.
 
 ---
 
