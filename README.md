@@ -32,6 +32,15 @@ vision.
 - ✅ No commercial cloud dependency, no data collection
 - ✅ Open source (MIT)
 
+## Documentation
+
+- `ARCHITECTURE.md` — system vision and shape
+- `ETHICS.md`, `PRIVACY.md` — the normative privacy and anti-surveillance line
+- `docs/FamilyBeacon-DesignGuide.md` — app/client design (functionality, UX)
+- `docs/FamilyBeacon-Protocol.md` — the client-side application protocol
+- `docs/FamilyBeacon-HostingGuide.md` — **thinking of hosting for others?** the
+  practical and legal (GDPR) side of running a server
+
 ## License
 
 MIT — see `LICENSE`.

@@ -107,7 +107,9 @@ backups, and remove departed members' devices promptly.
 
 If you host a server for people beyond your own household, you may take on
 data controller responsibilities under the GDPR. This document is not legal
-advice; know your situation before hosting for others.
+advice; know your situation before hosting for others. For a practical
+orientation — the household-vs-others line, the obligations that attach, and an
+operational checklist — see docs/FamilyBeacon-HostingGuide.md.
 
 ## Contact
 

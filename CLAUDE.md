@@ -124,5 +124,8 @@ SMS command model is the thing being replaced.
   product functionality, UX principles, core flows, per-platform strategy, and
   app-level design decisions. The middle layer between the normative docs and the
   clients; iterate on how the apps work and feel here.
+- `docs/FamilyBeacon-HostingGuide.md` — practical + legal (GDPR/Sweden) guide for
+  running a server, centered on the household-vs-hosting-for-others line. Not legal
+  advice; complements PRIVACY.md's "Self-hosting and the GDPR" section.
 - The predecessor's `docs/family-beacon-prd-0.2.md` covers the *old* SMS product
   only.
