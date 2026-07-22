@@ -24,3 +24,7 @@ node_modules/
 
 # OS
 .DS_Store
+
+# Claude Code local settings and temp files
+.claude/settings.local.json
+.claude/*.tmp.*
