@@ -1,5 +1,13 @@
 Family Beacon – Architecture Vision
 
+> Revision note (July 2026): two decisions reshaped this document since the
+> original vision. (1) The backend stack is locked to Go + SQLite — one static
+> binary, one database file. (2) Family Beacon formally adopted `../sund`, the
+> blind E2E store-and-forward relay, as its backend (CLAUDE.md decisions 1 and 3,
+> closed). The Backend, Core API, Database, Authentication, Push Notifications
+> and Deployment sections below reflect this; the server's own spec is
+> `../sund/docs/Sund-PRD.md`.
+
 Background
 
 Family Beacon started as a peer-to-peer application using SMS for communication between family members.
@@ -43,12 +51,8 @@ apps/
     ios/
     web/
 
-server/
-    api/
-    migrations/
-
 shared/
-    api/
+    protocol/    (envelope + message types — the client-side application protocol)
     models/
 
 docker/
@@ -60,85 +64,137 @@ docs/
 ARCHITECTURE.md
 README.md
 
+The server itself lives in ../sund (its own repo). This repo contains the
+clients, the client-side protocol, and deployment configuration — there is no
+server/ directory to write.
+
 ---
 
 Backend
 
 The backend should be intentionally small.
 
-Suggested stack:
+Stack (locked July 2026 — see ../sund/docs/Sund-PRD.md, decision 10):
 
-- Kotlin + Ktor (preferred) or Go
-- PostgreSQL
-- Redis (optional)
-- Docker Compose
-- Caddy (preferred) or Nginx
+- Go + SQLite: one static binary, one database file
+- Docker Compose for packaging
+- Caddy (preferred) or Nginx in front for TLS
+
+Notes on the change from the original sketch (Kotlin/Ktor + PostgreSQL + Redis):
+
+- The server component is ../sund, the blind relay extracted from Skerry
+  (CLAUDE.md decisions 1 and 3, closed July 2026). Should a thin
+  Family-Beacon-specific service ever prove necessary alongside Sund, it
+  follows the same rule — Go + SQLite, one binary.
+- PostgreSQL and Redis are dropped. SQLite is the database; at family scale
+  there is no load that justifies separate database and cache processes, and
+  backup becomes copying one file.
+- Kotlin is not gone — it remains the natural choice for the Android client
+  and shared client code. Only the server-side Ktor preference is superseded.
 
 ---
 
 Core API
 
-Examples:
+The server API is Sund's, specified in ../sund (PRD 0.3 and its implementation
+guide). It has two planes: a management plane (device registration, device
+list, revocation, key bundles, push endpoints, invitations) and a transport
+plane (create/send/receive/ack/retire on blind queues). Family Beacon adds no
+server endpoints of its own.
 
-POST /register
-POST /login
+What the original sketch listed as endpoints are now end-to-end-encrypted
+message types exchanged between clients over per-pair queues — the application
+protocol specified in docs/FamilyBeacon-Protocol.md (a versioned envelope
++ message types):
 
-POST /location
-POST /battery
-POST /panic
+- location update         (was POST /location)
+- battery status          (was POST /battery)
+- SOS                     (was POST /panic — same envelope at high priority,
+                           delivered with a wake-up ping)
+- geofence event          (arrival/departure; originates on the moving device)
+- settings / consent sync (was GET /commands + POST /ack; consent state is
+                           exchanged between clients, never seen by the server)
 
-GET /commands
-POST /ack
+Family membership (was GET /family + POST /invite) maps onto Sund's account
+device list and invitation flow — see the walkthroughs in
+../sund/docs/Sund-ImplementationGuide.md.
 
-GET /family
-POST /invite
-
-Communication uses HTTPS with JSON.
+Communication uses HTTPS with JSON against Sund; payloads are opaque
+ciphertext.
 
 ---
 
 Database
 
-Initial entities:
+Server side: the schema is Sund's, in one SQLite file — accounts, devices,
+bundles, invitations, queues, messages. Nothing in it is Family Beacon-specific
+and nothing in it is readable: payloads are ciphertext, and the schema stores
+no sender-to-recipient links (see Sund's threat model).
 
-- User
-- Family
-- Device
-- Invitation
-- DeviceLocation
-- Geofence
-- Notification
-- DeviceSettings
+Client side: each device keeps its own local store (e.g. Room on Android),
+encrypted at rest, holding what the original sketch put on the server:
 
-Keep the schema simple and extensible.
+- family members and their devices (mirrored from Sund's device list)
+- location history (own and received)
+- geofences
+- the transparency event log (the ethical line's activity ledger)
+- per-feature consent state and settings
+
+Keep the client schema simple and extensible; it can evolve per platform
+because it is never shared over the wire — only protocol messages are.
 
 ---
 
 Authentication
 
-- JWT access tokens
-- Refresh tokens
-- TLS everywhere
-- Device registration
-- Family-based authorization
+Sund's model — keys, not sessions:
+
+- Per-device Ed25519 identity keypair; the private key never leaves the device.
+- Management-plane requests are signed (device id, timestamp, nonce). No JWT,
+  no refresh tokens, no passwords.
+- Enrollment via QR: server address with pinned certificate fingerprint plus a
+  single-use, short-TTL invitation token. Physical co-presence is the trust
+  ceremony.
+- Family-based authorization = Sund account membership. Every device sees the
+  full device list; revocation is first-class — a removed device's key and
+  queues die immediately.
+- Transport-plane traffic authenticates with per-queue keys, unlinked to
+  device identity.
+- TLS everywhere, with the server certificate pinned from first contact.
 
 ---
 
 Push Notifications
 
-Instead of SMS:
+Instead of SMS — and instead of the original FCM sketch:
 
 Android:
 
-- Firebase Cloud Messaging (FCM)
+- UnifiedPush, with self-hosted ntfy as the default distributor (runs in the
+  same compose file). Fully self-hostable; no Google dependency.
 
 iOS:
 
-- Apple Push Notification Service (APNS)
+- APNS remains structurally unavoidable: delivery goes through a
+  vendor-operated push gateway that holds the APNS key. The gateway and Apple
+  see wake timing only — never content or queue IDs.
 
-Push notifications only wake the app.
+Pings are payload-free by design: no content, no queue IDs, only "check in".
+The original principle survives and is now structural: push only wakes the
+app; actual data is always drained from Sund queues over the API.
 
-Actual data is always fetched from the API.
+Still open (CLAUDE.md decisions 2 and 4): who operates the iOS gateway and
+what availability it promises, and what the SOS path guarantees when wake-up
+is slow or down.
+
+Not open, whatever that decision lands on: Family Beacon promises **no
+guaranteed SOS delivery** and is **not a route to emergency services**. The SOS
+path notifies family devices best-effort over the family's own
+single-point-of-failure server; it never contacts an operator, authority or
+alarm company. This limit is normative — see ETHICS.md (Safety limitations) — and
+the clients must surface both facts in the UI at the point of use (arming/
+triggering SOS, and onboarding), not bury them. Do not design or document the SOS
+path in a way that implies a stronger promise than best-effort.
 
 ---
 
@@ -164,28 +220,40 @@ docker compose up -d
 
 Containers:
 
-- api
-- postgres
-- redis (optional)
+- sund (the server: one static binary; its SQLite file lives in a volume)
+- ntfy (optional: self-hosted UnifiedPush distributor for Android wake-up)
 - caddy
 
-Nothing more should be required.
+Nothing more should be required. Backup is copying one database file.
 
 ---
 
 Long-Term Features
 
 - Live location
-- Location history
+- Location history (under consideration)
 - Geofences
 - Battery status
+- Contact me urgently
 - SOS / Panic button
 - Arrival / departure notifications
-- Secure family chat
+- Secure family chat (text in v1; image/media sharing depends on blob storage — see below)
 - Web interface
 - Home Assistant integration
 - Guest access
 - Webhooks
+
+Media dependency: any feature that moves bytes larger than a single message —
+shared images, member avatars, media in family chat, large/stored shared
+configs — depends on bulk blob storage that Sund does not provide. Blob/object
+storage is an explicit Sund *Non-goal* in V1 (see ../sund/docs/Sund-PRD.md →
+Non-goals), added only when a consumer demonstrates need, as a separate optional
+module keeping the same blindness guarantee. Family Beacon is that forcing
+consumer: these features are deferred to a future protocol version whose first
+step is driving the Sund blob module into existence, after which the clients
+exchange encrypted blob references (not bytes) over the same E2E payloads. Until
+then the wire protocol stays media-free. See docs/FamilyBeacon-Protocol.md →
+Future versions.
 
 ---
 
