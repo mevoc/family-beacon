@@ -225,48 +225,75 @@ Target deployment:
 
 docker compose up -d
 
-Two profiles. A is the default; B is what the web client requires.
+Two profiles. B is the recommended one for every deployment that can have a
+domain; A is the fallback for those that cannot.
 
-Profile A — home box, mobile clients (default)
+Profile B — domain deployment (recommended)
 
-- sund (the server: one static binary; its SQLite file lives in a volume),
-  run with `--tls-dir`: it terminates TLS itself with a fingerprint-pinned
-  self-signed certificate. The pin travels in the onboarding QR as part of the
-  server address (`sund://host:port#fingerprint`); clients verify against it
-  per ../sund/docs/Sund-Pinning-Contract.md.
-- ntfy (optional: self-hosted UnifiedPush distributor for Android wake-up)
+Containers: sund (plain HTTP internally, no --tls-dir), ntfy (optional:
+self-hosted UnifiedPush distributor for Android wake-up), caddy. Caddy
+terminates ordinary WebPKI TLS on 443. Reference config: docker/caddy/Caddyfile.
 
-No domain, no DNS, no ACME, no reverse proxy. This is the only shape in which
-"docker compose up -d and nothing more" is literally true — a domain and DNS
-were never things compose could bring up. Works on a bare IP or on the LAN.
+Why this is the recommendation, and not merely the option for web users:
+port 5870 is blocked on a large share of hotel, school, guest, airport and
+corporate networks, which are precisely the networks a family member is on when
+away from home — the situation the product exists for. A safety app that works
+at the kitchen table and fails on a school trip has failed at its one job. Port
+443 is the port that is open everywhere. That reachability argument applies to
+every deployment, including a mobile-only family with no interest in the web
+client, and it outweighs profile A's smaller setup.
 
-Profile B — domain deployment
+Two things additionally require B outright:
 
-Adds caddy in front, terminating ordinary WebPKI TLS. Required when:
+- The web client. A browser cannot implement the pinning contract — there is no
+  API to pin, and a request to a self-signed origin simply fails. apps/web
+  structurally needs a real domain and a publicly trusted certificate, plus
+  something to serve its static files. Caddy is both.
+- A self-hosted, internet-facing ntfy. The phone-side UnifiedPush distributor
+  validates against the public trust store and has no notion of Sund's pin, so
+  that leg needs a trusted certificate whatever Sund does. (A public distributor
+  such as ntfy.sh removes this; Sund→ntfy stays on the compose network.)
+  Caddy is also what multiplexes 443 by SNI when Sund and ntfy both want it.
 
-- the web client is used. A browser cannot implement the pinning contract —
-  there is no API to pin, and a request to a self-signed origin simply fails.
-  apps/web structurally needs a real domain and a publicly trusted certificate,
-  plus something to serve its static files. Caddy is both.
-- ntfy is self-hosted and internet-facing. The phone-side UnifiedPush
-  distributor does ordinary WebPKI and has no notion of Sund's pin, so that leg
-  needs a trusted certificate whatever Sund does. (Using a public distributor
-  such as ntfy.sh removes this; Sund→ntfy stays on the compose network and
-  needs nothing.)
-- reachability on port 443 matters. Pinned mode on :5870 is blocked by many
-  hotel, school and corporate networks. For a safety app that is a worse
-  failure than anything else on this page, and it is the one reason to choose
-  B even for a mobile-only family. Caddy is also what multiplexes 443 by SNI
-  when both Sund and ntfy want it.
+What B costs, and must be documented honestly: a domain, DNS records and ports
+80/443 — none of which compose can bring up, so "up -d and nothing more" covers
+the software but not the prerequisites; the proxy terminates TLS, making it a
+component that sees Sund's API metadata in clear and would log it by default, so
+the reference Caddyfile disables access logging explicitly; and a publicly
+trusted certificate puts the hostname in Certificate Transparency logs,
+permanently and publicly (the Caddyfile documents the wildcard-certificate
+mitigation). Payload confidentiality is unaffected — content is end-to-end
+encrypted below the transport, so none of this is a confidentiality regression,
+only a metadata one.
 
-What B costs, and must be documented honestly: it re-introduces exactly what
-pinning removes (domain, DNS, ports 80/443, ACME); the proxy terminates TLS, so
-it is a component that sees Sund's API metadata in clear and logs it by default
-— a residual-metadata surface Sund's own threat model does not cover, so the
-reference Caddyfile disables access logging; and a publicly trusted certificate
-puts the household's hostname in Certificate Transparency logs permanently and
-publicly. Payload confidentiality is unaffected either way — content is
-end-to-end encrypted below the transport.
+Profile A — no domain (fallback)
+
+Containers: sund run with `--tls-dir`, terminating TLS itself with a
+fingerprint-pinned self-signed certificate, plus optional ntfy. The pin travels
+in the onboarding QR as part of the server address
+(`sund://host:port#fingerprint`); clients verify against it per
+../sund/docs/Sund-Pinning-Contract.md.
+
+No domain, no DNS, no ACME, no proxy — the whole deployment really is one
+command, and it works on a bare IP or purely on the LAN. Choose it when a domain
+is genuinely unavailable, when the deployment is LAN-only by intent, or to get
+running before setting up DNS. Accept the consequence: devices will be
+unreachable on networks that block non-standard ports, and there is no web
+client. Serving the pinned listener on :443 instead of :5870 recovers part of
+the reachability without a domain, but not on networks that intercept 443 —
+pinning correctly refuses those, so the connection fails rather than downgrades.
+
+Migrating A → B later is a re-pairing event: the server address in every
+device's QR changes form. Prefer starting on B.
+
+Open — blocking for B, raise before client work: the server address format
+(`sund://host:port#fingerprint`) and ../sund/docs/Sund-Pinning-Contract.md define
+only the pinned form, and its §4 requires clients to disable platform trust
+evaluation and pin. Profile B needs a second, WebPKI address form (no fragment,
+verify normally) specified there, or clients have no defined way to connect to
+the recommended deployment. Sund's PRD already sanctions the proxy deployment
+server-side; the client-side contract has not caught up. This is a Sund-repo
+spec gap, not something to settle unilaterally here.
 
 Backup is copying one database file, in both profiles.
 

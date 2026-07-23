@@ -25,11 +25,13 @@ lightweight client/server architecture. See `ARCHITECTURE.md` for the vision.
   adds no server endpoints of its own.
 - **End-to-end encrypted** — content is readable only on family devices; the host
   who runs the server is an operator, not a viewer.
-- **Deploy** — `docker compose up -d` brings up Sund and ntfy (Android wake-up).
-  Sund terminates TLS itself with a fingerprint-pinned certificate, so there is no
-  domain, no DNS and no certificate authority to arrange. Add Caddy in front only
-  if you want the web client, an internet-facing self-hosted ntfy, or port 443
-  reachability. Backup is copying one database file.
+- **Deploy** — `docker compose up -d` brings up Sund, ntfy (Android wake-up) and
+  Caddy. Put it on a domain with real TLS on port 443: port 5870 is blocked on
+  many hotel, school and corporate networks — exactly where a family member is
+  when the app matters most. A domain-less mode exists (Sund terminates TLS itself
+  with a pinned certificate, nothing else required) and is the right choice for
+  LAN-only setups, but it costs you that reachability and the web client. Backup
+  is copying one database file.
 
 ## Layout
 
@@ -37,7 +39,7 @@ lightweight client/server architecture. See `ARCHITECTURE.md` for the vision.
 | --- | --- |
 | `apps/android`, `apps/ios`, `apps/web` | Client applications |
 | `shared/protocol`, `shared/models` | Client-side protocol library and shared models |
-| `docker/compose`, `docker/caddy` | Self-hosting deployment (Sund + ntfy; Caddy for the domain profile) |
+| `docker/compose`, `docker/caddy` | Self-hosting deployment (Sund + ntfy + Caddy) |
 | `docs/` | Architecture, protocol, design, and hosting documentation |
 
 The server is **not** in this repo — it is Sund (Go + SQLite), maintained
@@ -45,7 +47,8 @@ separately.
 
 ## Key principles
 
-- ✅ Self-hostable: `docker compose up -d` and nothing more
+- ✅ Self-hostable: `docker compose up -d` and nothing more to install (bring your
+  own domain for the recommended deployment; a domain-less LAN mode needs nothing)
 - ✅ End-to-end encrypted; the server is a blind relay that can't read your data
 - ✅ Explicit opt-in for every feature — designed for family safety, not surveillance
 - ✅ Transparent activity log visible to every device user

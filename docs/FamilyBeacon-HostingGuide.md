@@ -115,17 +115,26 @@ Family safety apps involve minors by design, so this is not a footnote.
 Practical hosting checklist (both cases, more strictly for others)
 
 Security and operation
-- Run the pinned-TLS mode (the default: Sund terminates TLS itself, no domain or
-  certificate authority needed) or, if you need the web client, an internet-facing
-  self-hosted ntfy, or port-443 reachability, put the server behind a
-  TLS-terminating reverse proxy — Caddy in the reference deployment. Never expose
-  plain HTTP to the internet.
-- If you take the proxy route, know what it adds: the proxy terminates TLS, so it
-  sees your users' request metadata in clear — turn its access logging off, not
-  down. And a publicly trusted certificate lists your hostname in Certificate
-  Transparency logs, permanently and publicly searchable. Neither touches message
-  content, which stays end-to-end encrypted; both are things to weigh, and to tell
-  the people you host about.
+- Put the server on a domain, behind the TLS-terminating reverse proxy (Caddy in
+  the reference deployment, config in `docker/caddy/Caddyfile`). This is the
+  recommended shape for every deployment, not only ones running the web client:
+  Sund's own port is blocked on many hotel, school, guest and corporate networks,
+  which is where the people you host will be when they most need the app to work.
+  If you host for others, this stops being a preference — you are promising them
+  a service that works away from home. Never expose plain HTTP to the internet.
+- Know what the proxy adds: it terminates TLS, so it sees your users' request
+  metadata in clear — turn its access logging off, not down (the reference
+  Caddyfile does). And a publicly trusted certificate lists your hostname in
+  Certificate Transparency logs, permanently and publicly searchable; a wildcard
+  certificate reduces that to one entry. Neither touches message content, which
+  stays end-to-end encrypted; both are things to weigh, and to tell the people you
+  host about.
+- The domain-less pinned-TLS mode (Sund terminates TLS itself, no certificate
+  authority involved) is a legitimate fallback for a LAN-only or genuinely
+  domain-less setup, and it is the more private of the two. Use it knowing that
+  devices will fail to connect on port-blocking networks and that there is no web
+  client — and do not choose it for people outside your household without telling
+  them that limitation plainly.
 - Keep the server, the OS, and the container images updated. Security patching is
   part of "appropriate measures," not optional.
 - Restrict who can reach the box (firewall, no stray open ports) and who can log in
@@ -187,7 +196,8 @@ Relationship to other documents
   at it. Its "Self-hosting and the GDPR" section is the short form of this guide.
 - ETHICS.md — the operator-not-surveillant rule and the safety limitations you must
   be honest about.
-- ARCHITECTURE.md — the deployment shape (Deployment: profile A = sund + ntfy with
-  pinned TLS; profile B adds caddy) and what one database file contains.
+- ARCHITECTURE.md — the deployment shape (Deployment: profile B = sund + ntfy +
+  caddy on a domain, recommended; profile A = pinned TLS, no domain, fallback) and
+  what one database file contains.
 - ../sund/docs/Sund-PRD.md — the server's threat model: exactly what a host can and
   cannot observe.

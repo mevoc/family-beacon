@@ -45,14 +45,24 @@ police is honesty about residual metadata (Sund's threat model) — see #5.
   iOS) — data is always drained from Sund queues, never carried in the push.
 - **Offline philosophy:** graceful degradation. Clients cache config, queue location
   updates offline, sync on reconnect.
-- **Deployment:** two profiles (ARCHITECTURE.md → Deployment). **A (default):**
-  `docker compose up -d` → `sund` (with `--tls-dir`: it terminates pinned TLS
-  itself, no domain/DNS/ACME) + `ntfy` (optional). **B (domain):** adds `caddy`
-  for WebPKI — required for the web client (browsers cannot pin), for an
-  internet-facing self-hosted ntfy, and for port-443 reachability on hostile
-  networks; costs a domain, proxy-visible API metadata, and a public
-  Certificate Transparency entry for the household hostname. Profile A must
-  stay at "nothing more required" — that's a hard constraint, not a hope.
+- **Deployment:** two profiles (ARCHITECTURE.md → Deployment).
+  **B (domain) is recommended for all deployments:** `sund` (plain HTTP) +
+  `ntfy` (optional) + `caddy` terminating WebPKI TLS on 443, reference config
+  in `docker/caddy/Caddyfile`. The reason is reachability, not the web client —
+  :5870 is blocked on hotel/school/corporate networks, i.e. exactly where a
+  family member is when the app matters. It is *additionally* mandatory for the
+  web client (browsers cannot implement the pinning contract) and for an
+  internet-facing self-hosted ntfy. Costs: a domain + DNS + ports 80/443,
+  proxy-visible API metadata (so access logging is off in the reference config),
+  and a public Certificate Transparency entry for the hostname.
+  **A (no domain) is the fallback:** `sund --tls-dir` (pinned TLS, nothing else)
+  for LAN-only or domain-less setups; no web client, and unreachable on
+  port-blocking networks. Compose must still bring up the whole software stack
+  in one command in both profiles — that's a hard constraint, not a hope; a
+  domain is an operator prerequisite of B, not an extra moving part.
+  **Open (blocking B):** the Sund pinning contract defines only the pinned
+  `sund://host:port#fingerprint` address form; B needs a WebPKI address form
+  specified in `../sund/docs/Sund-Pinning-Contract.md`. Raise it there.
 
 ## Design decisions — resolve open ones before building the affected part
 

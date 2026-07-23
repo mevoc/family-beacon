@@ -1,0 +1,164 @@
+# Family Beacon — reference Caddyfile (deployment profile B, the recommended one)
+#
+# Caddy terminates ordinary WebPKI TLS on 443 and proxies to Sund, to ntfy, and
+# (optionally) serves the web client. See ARCHITECTURE.md → Deployment for why
+# this profile is recommended over the pinned-TLS-only profile A: port 5870 is
+# blocked on a great many hotel, school, guest and corporate networks, and a
+# family safety app that cannot reach its server on exactly those networks fails
+# when it matters most.
+#
+# Prerequisites (these are the cost of profile B — compose cannot bring them up):
+#   - a domain, with A/AAAA records pointing at this box
+#   - ports 80 and 443 reachable from the internet (80 is used for the ACME
+#     challenge and the HTTPS redirect; Caddy handles both)
+#   - Sund running WITHOUT --tls-dir, i.e. plain HTTP on the internal network.
+#     Do not run pinned TLS behind this proxy; pick one or the other.
+#
+# Set in .env next to the compose file:
+#   BEACON_DOMAIN=beacon.example.org
+#   NTFY_DOMAIN=ntfy.example.org
+#   ACME_EMAIL=you@example.org
+
+{
+	email {$ACME_EMAIL}
+
+	# Keep the runtime log to real faults. Caddy's error log can carry client
+	# IPs, and this deployment holds families' data — see the access-log note
+	# in each site block below.
+	log {
+		level ERROR
+	}
+
+	# No admin API. Nothing here is reconfigured at runtime, and an open admin
+	# socket is a needless local-privilege surface on a home box.
+	admin off
+}
+
+# --- Sund: the relay API ---------------------------------------------------
+
+{$BEACON_DOMAIN} {
+	# Access logging OFF, stated explicitly rather than left to the default, so
+	# that it survives someone pasting a `log` block in from a tutorial. Every
+	# request here is a family member's device checking in; a log line per
+	# request rebuilds, in the clear, the per-device timing pattern that Sund's
+	# threat model treats as the residual metadata a host should not accumulate.
+	# If you must debug, turn this on deliberately and turn it off again.
+	log {
+		output discard
+	}
+
+	# Route by host and pass the path through untouched. This is a correctness
+	# requirement, not a style choice: a device signs
+	# METHOD \n PATH \n TIMESTAMP \n NONCE \n hex(sha256(BODY)), so any prefix
+	# stripping or path rewriting invalidates every signature and the server
+	# will reject the request. Never use `handle_path` (it strips) or `rewrite`
+	# in front of Sund. The Host header is not signed, so proxying is otherwise
+	# transparent.
+	# No header_up for the client address here. Sund reads neither
+	# X-Forwarded-For nor RemoteAddr — it authenticates devices by signature,
+	# not by network origin, and accounts quota per queue owner. Caddy adds
+	# X-Forwarded-For automatically regardless; Sund simply ignores it, which
+	# is the desirable direction. Do not "fix" this by teaching Sund to log
+	# client IPs.
+	reverse_proxy sund:5870
+
+	# Match Sund's own 1 MiB body cap, so oversized bodies are refused at the
+	# edge instead of being streamed to the relay first. (Message payloads are
+	# capped far lower, at 64 KiB, by Sund itself.)
+	request_body {
+		max_size 1MB
+	}
+
+	header {
+		# The API is not browser-facing; lock down what a browser would honour
+		# if one were pointed at it anyway.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+}
+
+# --- ntfy: Android wake-up (UnifiedPush distributor) ------------------------
+#
+# Needed only if you self-host ntfy. The phone-side UnifiedPush distributor
+# validates certificates against the ordinary public trust store and has no
+# notion of Sund's pin, so this leg needs a real certificate whichever profile
+# you run. Using a public distributor (ntfy.sh) instead means you can delete
+# this whole block — the pings are payload-free by design, so the distributor
+# learns wake timing and nothing else.
+#
+# Sund reaches ntfy over the compose network (http://ntfy:80) and does not pass
+# through Caddy at all.
+
+{$NTFY_DOMAIN} {
+	log {
+		output discard
+	}
+
+	reverse_proxy ntfy:80 {
+		# ntfy holds subscription connections open for a long time; do not let
+		# the proxy time them out from under the distributor.
+		transport http {
+			read_timeout 24h
+		}
+	}
+
+	# Unlike Sund, ntfy does use the client IP (visitor rate limiting), and it
+	# only trusts X-Forwarded-For when told it is proxied: set
+	# `behind-proxy: true` in ntfy's own server.yml, or every visitor will look
+	# like Caddy and share one rate-limit bucket.
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+}
+
+# --- Web client (optional) -------------------------------------------------
+#
+# The web client is the one part of Family Beacon that CANNOT run under profile
+# A: a browser cannot implement the pinning contract (no API to pin, and a
+# request to a self-signed origin simply fails), so apps/web requires a real
+# domain and a publicly trusted certificate. Serve its build output here.
+#
+# Uncomment once apps/web produces a build, and mount it at /srv/web.
+#
+#{$WEB_DOMAIN} {
+#	log {
+#		output discard
+#	}
+#
+#	root * /srv/web
+#	encode gzip zstd
+#	try_files {path} /index.html   # SPA fallback
+#	file_server
+#
+#	header {
+#		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+#		X-Content-Type-Options "nosniff"
+#		Referrer-Policy "no-referrer"
+#		# The client talks only to its own origin and the Sund API. Tighten
+#		# connect-src to the Sund host once the domain is known.
+#		Content-Security-Policy "default-src 'self'; connect-src 'self' https://{$BEACON_DOMAIN}; img-src 'self' data: blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+#		-Server
+#	}
+#}
+
+# --- Operator notes --------------------------------------------------------
+#
+# Certificate Transparency: every certificate Caddy obtains is published to
+# public CT logs, so each hostname above becomes permanently and publicly
+# searchable — it is discoverable that this domain runs something, though not
+# what, nor by whom. If that matters to you, obtain one wildcard certificate
+# (*.example.org) via the DNS-01 challenge instead: it needs a DNS-provider
+# module in the Caddy image and API credentials, and it puts a single wildcard
+# entry in the logs rather than one entry per service.
+#
+# Clock: Sund rejects signed requests more than 5 minutes from server time.
+# Keep NTP running on the host, or devices will fail to authenticate with
+# errors that look like anything but a clock problem.
+#
+# Rate limiting is not configured here: Caddy has no built-in rate limiter, it
+# requires a plugin and a custom image. Sund does its own quota accounting per
+# account, which is the layer that matters for abuse; add an edge limiter only
+# if you are exposed to something Sund's quotas do not cover.
