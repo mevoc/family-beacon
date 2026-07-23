@@ -60,6 +60,18 @@ reference). The family member hosting it:
   alternative. These parties see your device's push token, the app's
   identity, and when your device is woken — never any content, and the
   wake-up signal itself carries nothing at all.
+- **Try mode** (the serverless option, if your family uses it instead of
+  running a server): your messages pass through an ntfy instance — a public
+  one such as ntfy.sh unless your family runs its own. That operator
+  **cannot** read anything: content stays end-to-end encrypted between your
+  devices exactly as it is with your own server. What that operator **can**
+  see is more than a Sund server sees: because each device receives on its own
+  topic, the operator can observe which of your family members exchange
+  messages with which, and when — a link your own server deliberately does not
+  record. The operator also decides how long undelivered messages are kept, and
+  makes your family no availability promise. The app tells you when you are in
+  this mode, and your activity ledger records which transport each message
+  used. See docs/FamilyBeacon-TryMode.md.
 
 ## User control
 

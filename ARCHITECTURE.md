@@ -225,8 +225,10 @@ Target deployment:
 
 docker compose up -d
 
-Two profiles. B is the recommended one for every deployment that can have a
-domain; A is the fallback for those that cannot.
+Two profiles for running a server. B is the recommended one for every deployment
+that can have a domain; A is the fallback for those that cannot. Below both,
+Try mode runs the product with no server at all — a trial, not a third profile;
+see the end of this section.
 
 Profile B — domain deployment (recommended)
 
@@ -285,6 +287,26 @@ pinning correctly refuses those, so the connection fails rather than downgrades.
 
 Migrating A → B later is a re-pairing event: the server address in every
 device's QR changes form. Prefer starting on B.
+
+Try mode — no server at all (trial only, not a profile)
+
+Below both profiles sits a third option that is deliberately not a peer of them:
+Try mode, in which there is no Sund server and the same end-to-end-encrypted
+envelopes travel over an ntfy instance (public or self-hosted), joined by QR.
+Nothing to provision — no box, no domain, no Docker, no operator. It exists to
+remove the adoption cliff, because even profile A presupposes someone willing to
+be the operator *before* the family has seen the product work.
+
+It is a trial, not a tier. Two guarantees are honestly weaker — messages are lost
+past the ntfy instance's cache window, and revocation is client-side epoch
+rotation with no server-side key kill — it does not help iOS at all (no
+third-party push distributor exists there), and graduating to Sund re-pairs every
+device, exactly like an A→B switch. The mode is named in onboarding, its limits
+are restated where they bite, and the transparency ledger records which transport
+a message travelled under; the app never presents it as equivalent to a Sund
+deployment. Full spec, including the transport port that makes both backends
+possible without weakening Sund mode: docs/FamilyBeacon-TryMode.md (CLAUDE.md
+decision #8).
 
 The client-side address form for B is `sund+webpki://host[:port]`, specified in
 ../sund/docs/Sund-Pinning-Contract.md §8 (added v0.2, July 2026): standard

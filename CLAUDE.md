@@ -122,6 +122,34 @@ police is honesty about residual metadata (Sund's threat model) — see #5.
    into the v1 safety core; spec in `docs/FamilyBeacon-Protocol.md`, product/UX
    rules in the design guide ("Two urgent channels"), the interruption-budget
    rule normative in ETHICS.md.
+8. **Try mode (serverless ntfy transport) — DECIDED IN SHAPE (July 2026), open
+   in timing.** To remove the adoption cliff (profile A still presupposes an
+   operator, a machine that stays up, and Docker — asked *before* the family has
+   seen the product work), Family Beacon gains a second transport: the same
+   E2E-encrypted envelopes over an ntfy instance, joined by QR, no server to
+   provision. Spec: `docs/FamilyBeacon-TryMode.md`. Fixed by that decision:
+   - The seam is a **narrow transport port** (`send`/`subscribe`/`ack`/channel
+     lifecycle) below `beacon-protocol`; `ntfy-client` is a sibling of
+     `sund-client`, and nothing above the port changes. **Management-plane
+     capability stays above the port** — membership, introductions and
+     revocation become explicit client-side logic, and Sund mode uses its
+     management plane as a *stronger implementation* of that logic, never as the
+     only one. Widening the port to fit both backends would design Sund mode
+     down to ntfy's level; don't.
+   - Try mode is a trial, not a tier. It is honestly weaker on two things —
+     messages are lost past the instance's cache window, and revocation is
+     epoch rotation with no server-side kill — and graduating to Sund
+     **re-pairs every device**, like an A→B switch.
+   - **The abstraction must not hide the downgrade** (normative): the mode is
+     named in onboarding, its limits restated where they bite (device removal,
+     SOS arming), the transparency ledger records the transport mode, and the
+     app never presents Try mode as equivalent to a Sund deployment.
+   - It does **not** help iOS — no third-party push distributor exists there, so
+     an iOS client still needs the vendor APNS gateway of decision #2.
+   Open: whether it ships at v1 or after, and the blocking sub-item — state
+   reconciliation after cache-window loss, without which `consent_update` /
+   `config_update` are not merely weaker but incorrect. Remaining open items are
+   listed in the spec.
 
 ## Porting from family-beacon-android
 
@@ -153,6 +181,11 @@ SMS command model is the thing being replaced.
   product functionality, UX principles, core flows, per-platform strategy, and
   app-level design decisions. The middle layer between the normative docs and the
   clients; iterate on how the apps work and feel here.
+- `docs/FamilyBeacon-TryMode.md` — the serverless ntfy transport (decision #8):
+  the transport port and where the seam goes, topic derivation, the QR join
+  ceremony, epoch rotation, and an explicit account of what degrades. Read it
+  before touching the client's transport layer — the port boundary it fixes also
+  constrains Sund mode.
 - `docs/FamilyBeacon-HostingGuide.md` — practical + legal (GDPR/Sweden) guide for
   running a server, centered on the household-vs-hosting-for-others line. Not legal
   advice; complements PRIVACY.md's "Self-hosting and the GDPR" section.

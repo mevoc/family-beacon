@@ -119,6 +119,13 @@ Onboarding & first device
   at the SOS button.
 - Create or connect to the family's server (the Sund address, pinned by
   fingerprint from a QR). The trust ceremony is physical co-presence.
+- Or start in **Try mode** with no server (docs/FamilyBeacon-TryMode.md). The
+  choice is presented once, plainly, with what Try mode gives up — not as a
+  "quick start" that hides a downgrade. Three things must be on that screen and
+  not one layer deeper: messages can be lost if a phone is off for a long time,
+  removing a device is weaker than with your own server, and moving to a server
+  later means re-pairing every device. If the family already has a server,
+  Try mode is not offered.
 - Set a display name. Default sharing is nothing but name + SOS receipt.
 
 Pairing a new family member (adding a device)

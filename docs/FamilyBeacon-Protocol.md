@@ -43,6 +43,10 @@ Layering
     beacon-protocol library   this spec: envelope codec, message types,
                               consent state machine, transparency ledger
     ─────────────────────────────────────────────────────────────────
+    family roster             membership, introductions, revocation policy
+    ─────────────────────────────────────────────────────────────────
+    transport port            send / subscribe / ack / channel lifecycle
+    ─────────────────────────────────────────────────────────────────
     sund-client library       generic, app-agnostic: device identity and
                               request signing, enrollment (QR), pairing,
                               session crypto, queue lifecycle and rotation,
@@ -50,12 +54,36 @@ Layering
     ─────────────────────────────────────────────────────────────────
     Sund server API           blind queues (see ../../sund)
 
-The two libraries are deliberately separable. sund-client contains nothing
+The libraries are deliberately separable. sund-client contains nothing
 about families or locations — it is the client half of Sund itself, reusable
 by any project that adopts Sund as a backend (several candidates exist in this
 workspace). beacon-protocol is Family Beacon's own layer. The packaging and
 language strategy for both is an open decision (see end of this document);
 what is fixed is the boundary between them.
+
+The transport port and the second backend
+
+The port is the interface this spec's Transport assumptions describe, stated as
+an interface so that more than one thing can implement it:
+
+    send(channel, ciphertext, priority, ttl) → message_id
+    subscribe(channel) → stream of (message_id, ciphertext, received_at)
+    ack(channel, message_id)
+    open(channel) / retire(channel)
+
+sund-client is one implementation. ntfy-client — the serverless Try mode of
+CLAUDE.md decision #8, specified in FamilyBeacon-TryMode.md — is the other. The
+port is narrow on purpose: everything in this document sits above it and is
+identical in both modes, envelope and consent and ledger alike.
+
+What the port deliberately does NOT carry is Sund's management plane — device
+registry, key bundles, invitations, server-enforced revocation. Those become
+explicit client-side logic in the family roster layer, and Sund mode implements
+that logic *more strongly* by also using its management plane (server-side key
+kill and queue retirement) rather than only rotating client-side. Widening the
+port until both backends fit would design Sund mode down to the weaker backend's
+level; the difference between the modes is surfaced to the user instead of being
+abstracted away (TryMode → Honesty rule).
 
 Note on implementations: the Sund system-test client (beaconsim, in Python —
 deliberately a different language from the Go server, so the wire format is
@@ -81,7 +109,10 @@ Transport assumptions (provided by sund-client, not specified here)
   numbers below.
 - Group semantics do not exist on the wire. "The family" is a client-side
   composition over per-pair channels: sending to the family means sending the
-  same message over every pair the sender has.
+  same message over every pair the sender has. (Try mode has one narrow
+  exception below the port — a family-wide channel carrying membership
+  coordination only, never a message type from this spec. See
+  FamilyBeacon-TryMode.md → Topics.)
 
 ---
 
@@ -422,6 +453,9 @@ new server trust.
 Relationship to other documents
 
 - ../ARCHITECTURE.md — names this spec (Core API section).
+- FamilyBeacon-TryMode.md — the second implementation of the transport port
+  above: the serverless ntfy mode, what it gives up, and the honesty rule that
+  keeps the swap visible to the user.
 - ../../sund/docs/Sund-PRD.md — the transport this rides on; normative
   for everything below the envelope.
 - ../../sund/docs/Sund-ImplementationGuide.md — pairing walkthroughs that
