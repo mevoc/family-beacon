@@ -110,7 +110,10 @@ protocol specified in docs/FamilyBeacon-Protocol.md (a versioned envelope
 - location update         (was POST /location)
 - battery status          (was POST /battery)
 - SOS                     (was POST /panic — same envelope at high priority,
-                           delivered with a wake-up ping)
+                           delivered with a wake-up ping; broadcast to all)
+- attention               (directed "contact me urgently" nudge to one member;
+                           high priority, short TTL, no data, revocable allow —
+                           deliberately a separate type from SOS)
 - geofence event          (arrival/departure; originates on the moving device)
 - settings / consent sync (was GET /commands + POST /ack; consent state is
                            exchanged between clients, never seen by the server)
@@ -242,8 +245,11 @@ Long-Term Features
   (Live location → Retention).
 - Geofences
 - Battery status
-- Contact me urgently
-- SOS / Panic button
+- Contact me urgently — directed at one member, overrides their silent mode to get
+  their attention; carries no data and is a grant they can revoke
+- SOS — broadcast to the whole family about the sender's own situation; mandatory
+  to receive. Distinct from the above in kind, not in degree; see
+  docs/FamilyBeacon-DesignGuide.md → Two urgent channels
 - Arrival / departure notifications
 - Secure family chat (text in v1; image/media sharing depends on blob storage — see below)
 - Web interface

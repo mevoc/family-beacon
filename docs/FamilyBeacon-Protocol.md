@@ -130,7 +130,10 @@ sos
     recorded_at, last_location (optional — sent even without a location
     grant: an explicit SOS overrides granted sharing for its own content,
     and this exception is stated in the consent UI, not buried here),
-    note (optional, short). Sent to every pair at maximum Sund priority with
+    note (optional, short). A broadcast about the sender's own situation — the
+    directed "I need you to answer me" case is a separate attention type (see
+    Related v0.2 companions), never a downgraded sos. Sent to every pair at
+    maximum Sund priority with
     maximum TTL, delivered with a wake-up ping. Requires receipt (below);
     the sender app escalates while unacknowledged (re-send, then the
     degraded path of CLAUDE.md decision #4 — outside this spec). Best-effort
@@ -144,6 +147,37 @@ sos_clear
     references the sos id; stands the alert down on all devices. Same
     delivery treatment as sos.
 
+attention
+    reason (optional, short, length-capped), recorded_at. The directed
+    "contact me urgently" nudge: sent to one pair, it asks the recipient to
+    override a silent or low ringer and get back to the sender. Deliberately
+    not a weaker sos — the two differ in kind. attention is about the
+    *recipient's availability* and addressed to one member; sos is about the
+    *sender's situation* and broadcast to all. They therefore keep separate
+    types, consent, content and delivery rules (design guide → Two urgent
+    channels), and no client may synthesize one from the other or auto-escalate
+    between them.
+    - Carries no location, ever. The "where are you" case is location_request
+      under the location grant, not this type.
+    - High Sund priority with a wake-up ping, but a short TTL: an hour-old
+      "call me now" is noise, not a nudge (sos takes the maximum TTL).
+    - Requires an inbound allow grant held by the *recipient* (feature =
+      attention in consent_update), revocable like any other — unlike sos
+      reception, which is mandatory. This is the one type whose enforcement
+      sits at the receiver rather than the producer: the sender cannot know the
+      receiver's current interruption budget, so the receiving client decides
+      whether an arrival is presented with the ringer override or as an
+      ordinary notification. A revoked grant is still enforced at the producer
+      in the usual way — the sender's app refuses to emit.
+    - Rate-limited by the recipient (interruption budget; see the design guide
+      for the anti-harassment rationale). Suppression is reported honestly via
+      the receipt status below, never silently.
+    - Requires receipt. status extends for this type to
+      delivered | seen | suppressed (arrived without the override) and the
+      one-tap replies calling | on_my_way | cannot_talk, so the sender always
+      learns what actually happened.
+    - Ledgered on both sides with sender name and reason. No anonymous nudge.
+
 geofence_event
     fence_id, transition (enter | exit), recorded_at. Emitted by the moving
     device — the fence is evaluated on the device it concerns, which
@@ -151,7 +185,8 @@ geofence_event
     feature. There is no server-side or observer-side fence evaluation.
 
 consent_update
-    feature (location | battery | geofence | …), action (grant | revoke),
+    feature (location | battery | geofence | attention | …), action
+    (grant | revoke),
     optional scope (e.g. a fence id). Directional and pairwise: the data
     producer grants the observer. Enforcement lives at the producer — a
     revoke takes effect locally and immediately; the message informs the
@@ -170,8 +205,9 @@ member_info
     Sent on join and on change.
 
 receipt
-    of (message id), status (delivered | seen). Mandatory for sos, sos_clear
-    and consent_update. For everything else, receipts are off by default —
+    of (message id), status (delivered | seen; plus suppressed and the reply
+    values for attention, above). Mandatory for sos, sos_clear, attention and
+    consent_update. For everything else, receipts are off by default —
     "seen" tracking of routine location updates is surveillance-adjacent and
     stays opt-in per pair, both directions aware (it is itself a feature
     requiring a grant).
@@ -182,8 +218,18 @@ Consent state machine (normative)
 
 - State lives at the producer: a per-(feature, observer) grant set, changed
   only by the device's own user, persisted locally, every change ledgered.
+- Inbound features invert the roles but not the rule. For attention (and
+  location_request in v0.2) the grant is held by the party being reached: they
+  are still the device's own user deciding what leaves or enters their device,
+  the grant is still advertised by consent_update, and the peer still enforces
+  it by refusing to emit. The difference is only that the receiver additionally
+  enforces at delivery — it may present an allowed attention without the ringer
+  override when its interruption budget is spent, and says so in the receipt.
+  That is a policy the receiver owns, never something the sender can override.
 - Default deny. A fresh pairing shares nothing but member_info and the
-  ability to receive sos.
+  ability to receive sos — which is mandatory precisely because it reports the
+  sender's situation rather than demanding the recipient's attention. attention
+  is not part of a fresh pairing: it must be granted like everything else.
 - Grants are advertised via consent_update so the observer's UI can reflect
   reality, but the advertisement is informational — enforcement is the
   producer refusing to emit.
@@ -337,8 +383,6 @@ same discipline as presence (bodies, consent, ledgering, test vectors):
   and ledgered as a discrete event on both sides. Client-side retention is
   last-known-only by default (no movement trail) — a client policy, not a wire
   concern, stated in the design guide and PRIVACY.md.
-- Contact me urgently — a small inbound nudge type short of sos, gated by its own
-  allow grant.
 - Pause — likely an "until"-carrying form of consent_update so a paused share
   renders as benign Paused at the observer rather than as staleness.
 

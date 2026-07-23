@@ -38,6 +38,15 @@ To prevent misuse, Family Beacon includes:
 - Device-lock protection for configuration changes.
 - The app can be disabled or uninstalled at any time.
 
+Reaching *through* someone's device is treated as a capability, not a courtesy:
+the "contact me urgently" nudge, which overrides a silent phone to demand
+attention, is an inbound permission each person grants per member and can revoke,
+rate-limited on the receiving device, and always ledgered with the sender's name.
+Only an **SOS** — which reports the sender's own situation rather than making a
+demand of the recipient — is mandatory to receive. A directed override that could
+not be capped or withdrawn would be a nagging instrument in exactly the
+relationships this document is written about.
+
 One stated exception: an **explicit SOS** sent by the device's own user
 includes their last known location even if location sharing is not otherwise
 granted. The person pressing the button is asking to be found. This exception

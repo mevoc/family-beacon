@@ -93,6 +93,17 @@ police is honesty about residual metadata (Sund's threat model) — see #5.
    sund-client can be reused by other projects. Open: implementation strategy —
    Kotlin Multiplatform, a Rust core with generated bindings, or per-platform
    native code disciplined by the spec's shared test vectors.
+7. **Urgent contact vs. SOS — CLOSED (July 2026): two separate v1 features,
+   different in kind.** "Contact me urgently" (`attention`) is directed at one
+   member, overrides their ringer, carries no data, and is an inbound *allow*
+   they grant, revoke and rate-limit at their own device. SOS is a broadcast
+   about the sender's own situation, mandatory to receive, and overrides sharing
+   for its own content. Neither auto-escalates into the other and no client may
+   synthesize one from the other — a family with no directed channel will misuse
+   the broadcast one, and an alarm that cries wolf is worse than none. Promoted
+   into the v1 safety core; spec in `docs/FamilyBeacon-Protocol.md`, product/UX
+   rules in the design guide ("Two urgent channels"), the interruption-budget
+   rule normative in ETHICS.md.
 
 ## Porting from family-beacon-android
 
@@ -117,8 +128,8 @@ SMS command model is the thing being replaced.
 - `ETHICS.md`, `PRIVACY.md` — **normative, not marketing copy** (July 2026 rewrite
   for the Sund architecture; the predecessor's versions stay with the SMS product).
 - `docs/FamilyBeacon-Protocol.md` — the client-side application protocol:
-  versioned envelope, message types (location/battery/sos/geofence/consent/
-  config/member_info/receipt), consent state machine, ledger rule, library
+  versioned envelope, message types (location/battery/sos/attention/geofence/
+  consent/config/member_info/receipt), consent state machine, ledger rule, library
   layering (sund-client / beacon-protocol), test-vector discipline.
 - `docs/FamilyBeacon-DesignGuide.md` — the app/client design guide (living):
   product functionality, UX principles, core flows, per-platform strategy, and

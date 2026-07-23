@@ -81,9 +81,13 @@ v1 (the safety core)
 - Geofences (places) — define a place; get an arrival/departure notification when
   a member who shares that with you enters or leaves. Evaluated on the moving
   member's own device (protocol: geofence_event), never server-side.
-- SOS — an explicit "I need help / find me" alert to the whole family, best-effort
-  and consent-overriding for its own content. See SOS below; it carries hard UI
-  requirements.
+- Contact me urgently — a directed nudge to one member that overrides their silent
+  mode / low ringtone to get their attention ("call me back, now"). Carries no
+  data, is an inbound *allow* they control, and is deliberately not SOS. See Two
+  urgent channels below.
+- SOS — an explicit broadcast alert to the whole family about the sender's own
+  situation ("I need help / find me"), best-effort and consent-overriding for its
+  own content. See SOS below; it carries hard UI requirements.
 - Family & pairing — add a device by an in-person QR ceremony; see the full family
   device list; leave the family or remove a lost device (revocation).
 - Activity ledger — a readable log of everything sent and received on this device.
@@ -141,7 +145,7 @@ Geofence / arrival-departure
 - The crossing is detected on the moving device; the notification is the product.
   Make it clear whose arrival/departure and at which place.
 
-SOS (safety-critical — see dedicated section)
+Urgent contact / SOS (safety-critical — see the two dedicated sections)
 
 Leaving / revoking
 - A member can leave the family, and a lost/stolen device can be revoked by the
@@ -150,11 +154,115 @@ Leaving / revoking
 
 ---
 
-SOS — hard UI requirements
+Two urgent channels — "Contact me" and SOS
+
+The app has two ways to break through, and they answer different questions.
+Conflating them is the likeliest design mistake in this product: one is about the
+*recipient's attention*, the other is about the *sender's situation*.
+
+| | Contact me urgently | SOS |
+|---|---|---|
+| Answers | "I need **you** — get back to me now" | "Something is wrong with **me**" |
+| Direction | directed at one named member (occasionally a few, chosen) | broadcast to the whole family |
+| Subject | the recipient's availability | the sender's own state |
+| Consent | inbound *allow*, per person, revocable | mandatory to receive, cannot be switched off |
+| Carries | who is asking + an optional short reason. No location. | last-known location, overriding sharing grants |
+| On the recipient's device | breaks through silent / low ringer to get attention | full alert, sticky, stays up until stood down |
+| The ask | "answer me / call me back" | "know this, and act" |
+| Stand-down | implicit: they respond, done | explicit sos_clear, broadcast to everyone |
+| Expected frequency | mundane, several times a month | rare, ideally never |
+
+Why both must exist as separate things: the common case is not an emergency at
+all — the phone is in a bag, on silent, on a low ringtone, in a meeting, and I
+need that one person *now*. If the only override in the app is SOS, that case
+gets sent as SOS, and a family quickly learns to discount SOS. An alarm channel
+that cries wolf is worse than no alarm channel. Giving the everyday interruption
+its own channel is precisely what keeps SOS meaning what it says.
+
+Rules that follow:
+
+- **Different affordance, different place.** "Contact me" is addressed to a
+  person, so it lives on the member (member detail / member row action). SOS is
+  about me, so it lives at the app level (and on the widget/lock surface). Never
+  adjacent, never the same gesture, and distinct in sound, color, wording and
+  notification style. A user under stress must not be able to confuse them.
+- **No auto-escalation, either way.** An unanswered "contact me" never turns
+  itself into an SOS, and an SOS is never presented as a nudge that got serious.
+  Escalation is a deliberate human act (the app may *offer* SOS after a
+  repeatedly unanswered nudge, but only as a plain, clearly-labelled choice).
+- **No implied data.** "Contact me" carries no location and requests none. If
+  what I actually want is "where are you", that is the on-demand location pull —
+  a separate allow, named as such in the UI, and ledgered as a location request.
+- **Naming.** User-facing: "Contact me" / "Urgent" and "SOS" (sv: "Kontakta mig"
+  / "SOS-larm"). Drop "panic button" from product language — it survives only as
+  historical wording in ARCHITECTURE.md's feature list.
+
+---
+
+Urgent contact — the attention override
+
+This is the only feature where I ask something of another person's *device*
+rather than of their *data*. It discloses nothing, so the data-consent axis
+barely applies; what it needs instead is an interruption budget and full
+visibility.
+
+- **Inbound allow, per person, revocable** (the member matrix). Unlike SOS
+  reception, it is *not* mandatory: a named person being able to override the
+  silence of my phone is exactly the asymmetric power the ethical line exists to
+  bound — think of the coercive-partner case, not the parent-teen case.
+- **Default deny**, like every other grant, but the pairing flow should offer it
+  as one of a small set of suggested *mutual* grants, so a family enables it
+  deliberately and symmetrically rather than one side acquiring it quietly.
+- **Interruption budget, enforced at my device.** A cap on how often one member
+  may override my ringer (order of a few per hour, with backoff on repeats).
+  Past the cap the nudge still arrives — as an ordinary notification, without the
+  override. This is the anti-harassment control; without it the feature is a
+  nagging weapon in the relationships ETHICS.md is written about.
+- **Never anonymous, always ledgered.** Sender's name and the reason string are
+  shown on the alert and recorded in both devices' ledgers, sent and received.
+- **Honest suppression.** If the override was suppressed (budget spent, quiet
+  hours, member paused), the sender is told it was delivered without the
+  override rather than being left to believe a phone was ignored.
+- **Close the loop fast.** The recipient gets one-tap responses — "Calling you",
+  "On my way", "Can't talk now" — and the sender sees delivered / seen / the
+  reply. The product is the callback, not the alert.
+- **Optional short reason**, a few words, length-capped ("call mum", "outside
+  school"). It is a courtesy and it makes the override accountable.
+- **Same honesty about reach as SOS.** Best-effort: the server can be down, the
+  phone off, the OS may refuse the override. Never present break-through as
+  guaranteed.
+
+Platform reality (it constrains the promise, so it is stated here):
+
+- Android — a dedicated high-importance notification channel that bypasses DND.
+  Channel-level settings are visible and editable in system settings, which fits
+  the transparency rule: the recipient can see and tune the override the app
+  claims.
+- iOS — time-sensitive notifications are reachable; true Critical Alerts (which
+  ignore silent/Focus) need an Apple entitlement that SOS may plausibly justify
+  and an everyday nudge probably does not. The app must not claim a tier it
+  cannot deliver, and the iOS copy must say what it actually does.
+- Both ride the same payload-free wake ping; the override lives in how the client
+  presents the drained message, not in the push.
+
+Scope: decided (July 2026) — urgent contact ships **in the v1 safety core**, not
+with the v0.2 companions. It is small, it is the highest-frequency urgent action
+in the product, and it reuses SOS's priority/wake machinery; shipping SOS without
+it also invites exactly the misuse this section exists to prevent, since users
+with no directed channel will reach for the broadcast one. The wire type
+(`attention`) is specified in FamilyBeacon-Protocol.md → Message types — v1.
+
+---
+
+SOS — the broadcast alarm, and its hard UI requirements
 
 SOS is the one flow where getting the UX honest matters most. These are
 requirements, not suggestions (normative source: ETHICS.md → Safety limitations;
 protocol sos type; CLAUDE.md decision #4).
+
+- SOS is a *broadcast about the sender* — "I am in trouble, here is where I am",
+  to everyone. The directed "I need you specifically" case is urgent contact
+  above and must never be routed through SOS.
 
 - The UI must state, where SOS is armed/triggered and in onboarding, that Family
   Beacon does not call emergency services and cannot guarantee delivery. No
@@ -404,13 +512,15 @@ kinds:
   on a producer-set interval (see Live location below), safe-zone enter/exit events,
   and battery-level events. The toggle means "do I emit this to them."
 - Allow (inbound) — I permit a member to reach or pull from me: send me an "urgently
-  contact me" nudge, or request my most-current location on demand (a pull layered
-  on the live-location share, not a separate feature). The toggle means "may they
-  ask." A request I have not allowed never reaches me as an interruption (enforced
-  at my device, like all consent).
-- Mandatory (inbound, not toggleable) — receiving a family member's SOS. This
-  cannot be switched off; it is the one thing a fresh pairing already permits
-  (ETHICS.md). Shown in the matrix as present and locked, with a one-line why.
+  contact me" nudge that overrides my ringer, or request my most-current location on
+  demand (a pull layered on the live-location share, not a separate feature). The
+  toggle means "may they ask." A request I have not allowed never reaches me as an
+  interruption (enforced at my device, like all consent).
+- Mandatory (inbound, not toggleable) — receiving a family member's SOS, because it
+  reports *their* situation rather than demanding something of me. This cannot be
+  switched off; it is the one thing a fresh pairing already permits (ETHICS.md).
+  Shown in the matrix as present and locked, with a one-line why. The contrast with
+  the revocable urgent-contact allow above is deliberate — see Two urgent channels.
 
 Feature map (per member, from my point of view):
 
@@ -420,8 +530,8 @@ Feature map (per member, from my point of view):
 | Live location (interval + pull)  | share + allow | location (v1) + location_request (v0.2) |
 | Safe zones (enter/exit)          | share         | geofence_event (v1)             |
 | Battery level                    | share         | battery (v1)                    |
-| Contact me urgently              | allow         | needs a nudge type — not yet    |
-| Panic / SOS (receive)            | mandatory     | sos (v1), always on             |
+| Contact me urgently (directed)   | allow         | attention (v1)                  |
+| SOS broadcast (receive)          | mandatory     | sos (v1), always on             |
 
 Per-feature controls
 
@@ -517,8 +627,9 @@ Protocol implications (flagged, to specify next like presence)
   gated by the location grant, ledgered as a discrete event on both sides (who
   asked, when). The interval-share half reuses the existing location type with a
   producer-declared max-gap interval, mirroring presence.
-- Contact me urgently (allow) needs a small nudge message type (an inbound
-  attention signal short of SOS), gated by its allow grant.
+- Contact me urgently (allow) — done: specified as the v1 attention type
+  (FamilyBeacon-Protocol.md), gated by its allow grant and rate-limited at the
+  recipient. Not "SOS but weaker" — see Two urgent channels.
 - Pause likely wants an explicit form on consent_update (a revoke carrying an
   "until" / auto-resume hint) so observers can render Paused rather than guessing.
 
@@ -584,8 +695,10 @@ date them as we iterate.
    protocol leaves to the app). Open.
 4. Receipts UX — whether "delivered" receipts power a staleness/last-seen UI for
    routine location, mirroring protocol open item #3. Open.
-5. Notification taxonomy — channels/categories, quiet handling, and how SOS
-   escalates above normal notifications on each platform. Open.
+5. Notification taxonomy — channels/categories, quiet handling, and how SOS and
+   urgent contact each escalate above normal notifications on each platform. Open,
+   and now two-tiered: they must be unmistakably different alerts, never one style
+   at two volumes (see Two urgent channels).
 6. Map provider / offline maps — which map, and offline behavior. Open.
 7. Onboarding depth — how much of the honesty (not-an-emergency-service,
    best-effort, consent model) to front-load vs. surface in context. Open.
@@ -612,8 +725,12 @@ date them as we iterate.
     history exists at all. No-trail decision confirmed and propagated to
     ARCHITECTURE.md (Database; Long-Term Features) and PRIVACY.md.
 12. Allow-features protocol types — location_request (request/response, gated by the
-    location grant) and a "contact me urgently" nudge type, both ledgered as discrete
-    events. To be specified like presence was. Open.
+    location grant) is still to be specified like presence was: open. The "contact
+    me urgently" half is Decided (July 2026): specified as the v1 attention type,
+    separate in kind from SOS (see Two urgent channels; CLAUDE.md decision #7).
+    Remaining sub-questions are values, not shape — the interruption-budget numbers
+    (how many overrides per hour, backoff curve) and the iOS notification tier the
+    app can honestly claim.
 13. Pause semantics — the "pause 1h" affordance must be communicated so observers
     render a benign Paused state, not offline/red; likely an "until"-carrying form
     of consent_update. Confirm mechanism and the widget's Paused state. Open.
