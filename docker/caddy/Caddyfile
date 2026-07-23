@@ -87,8 +87,11 @@
 # this whole block — the pings are payload-free by design, so the distributor
 # learns wake timing and nothing else.
 #
-# Sund reaches ntfy over the compose network (http://ntfy:80) and does not pass
-# through Caddy at all.
+# Note that Sund's own pushes come through here too, not over the internal
+# network: Sund POSTs to the endpoint URL the device registered, which is the
+# public https://<ntfy domain>/… address its distributor minted. The compose
+# file aliases that hostname to this container so the request resolves locally
+# instead of depending on NAT hairpinning — see docker/compose/compose.yaml.
 
 {$NTFY_DOMAIN} {
 	log {
