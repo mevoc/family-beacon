@@ -60,9 +60,11 @@ police is honesty about residual metadata (Sund's threat model) — see #5.
   port-blocking networks. Compose must still bring up the whole software stack
   in one command in both profiles — that's a hard constraint, not a hope; a
   domain is an operator prerequisite of B, not an extra moving part.
-  **Open (blocking B):** the Sund pinning contract defines only the pinned
-  `sund://host:port#fingerprint` address form; B needs a WebPKI address form
-  specified in `../sund/docs/Sund-Pinning-Contract.md`. Raise it there.
+  Client address forms: `sund://host:port#fingerprint` (A) and
+  `sund+webpki://host[:port]` (B), both normative in
+  `../sund/docs/Sund-Pinning-Contract.md` (§8 added v0.2, July 2026). Clients
+  implement both; no fallback between modes, and a mode switch re-pairs every
+  device — so pick the profile before onboarding a family.
 
 ## Design decisions — resolve open ones before building the affected part
 

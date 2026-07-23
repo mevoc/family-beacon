@@ -286,14 +286,13 @@ pinning correctly refuses those, so the connection fails rather than downgrades.
 Migrating A → B later is a re-pairing event: the server address in every
 device's QR changes form. Prefer starting on B.
 
-Open — blocking for B, raise before client work: the server address format
-(`sund://host:port#fingerprint`) and ../sund/docs/Sund-Pinning-Contract.md define
-only the pinned form, and its §4 requires clients to disable platform trust
-evaluation and pin. Profile B needs a second, WebPKI address form (no fragment,
-verify normally) specified there, or clients have no defined way to connect to
-the recommended deployment. Sund's PRD already sanctions the proxy deployment
-server-side; the client-side contract has not caught up. This is a Sund-repo
-spec gap, not something to settle unilaterally here.
+The client-side address form for B is `sund+webpki://host[:port]`, specified in
+../sund/docs/Sund-Pinning-Contract.md §8 (added v0.2, July 2026): standard
+platform TLS verification, no fragment, no fallback between modes in either
+direction. Clients MUST implement both modes; the scheme selects which, and it
+is stored per account rather than negotiated. Switching a running deployment
+between modes re-pairs every device (§8.5), which is the other half of why the
+profile choice belongs before onboarding.
 
 Backup is copying one database file, in both profiles.
 
