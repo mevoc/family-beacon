@@ -38,15 +38,21 @@ police is honesty about residual metadata (Sund's threat model) — see #5.
 
 - **Backend:** Go + SQLite — one static binary, one database file (locked July
   2026 per `../sund/docs/Sund-PRD.md` decision 10; supersedes the original
-  Ktor + PostgreSQL sketch). Intended server: `../sund`. Caddy in front.
-  Intentionally small. Kotlin stays for the Android client / shared client code.
+  Ktor + PostgreSQL sketch). Intended server: `../sund`, terminating pinned TLS
+  itself (no reverse proxy by default — see Deployment). Intentionally small. Kotlin stays for the Android client / shared client code.
 - **Clients:** `apps/android`, `apps/ios`, `apps/web`. Push only *wakes* the app
   (payload-free pings; UnifiedPush/ntfy on Android, APNS via vendor gateway on
   iOS) — data is always drained from Sund queues, never carried in the push.
 - **Offline philosophy:** graceful degradation. Clients cache config, queue location
   updates offline, sync on reconnect.
-- **Deployment:** `docker compose up -d` → `sund`, `ntfy` (optional), `caddy`.
-  Nothing more may be required — that's a hard constraint, not a hope.
+- **Deployment:** two profiles (ARCHITECTURE.md → Deployment). **A (default):**
+  `docker compose up -d` → `sund` (with `--tls-dir`: it terminates pinned TLS
+  itself, no domain/DNS/ACME) + `ntfy` (optional). **B (domain):** adds `caddy`
+  for WebPKI — required for the web client (browsers cannot pin), for an
+  internet-facing self-hosted ntfy, and for port-443 reachability on hostile
+  networks; costs a domain, proxy-visible API metadata, and a public
+  Certificate Transparency entry for the household hostname. Profile A must
+  stay at "nothing more required" — that's a hard constraint, not a hope.
 
 ## Design decisions — resolve open ones before building the affected part
 

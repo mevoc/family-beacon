@@ -115,8 +115,17 @@ Family safety apps involve minors by design, so this is not a footnote.
 Practical hosting checklist (both cases, more strictly for others)
 
 Security and operation
-- Run the pinned-TLS mode or put the server behind a TLS-terminating reverse proxy
-  (Caddy in the reference deployment); never expose plain HTTP to the internet.
+- Run the pinned-TLS mode (the default: Sund terminates TLS itself, no domain or
+  certificate authority needed) or, if you need the web client, an internet-facing
+  self-hosted ntfy, or port-443 reachability, put the server behind a
+  TLS-terminating reverse proxy — Caddy in the reference deployment. Never expose
+  plain HTTP to the internet.
+- If you take the proxy route, know what it adds: the proxy terminates TLS, so it
+  sees your users' request metadata in clear — turn its access logging off, not
+  down. And a publicly trusted certificate lists your hostname in Certificate
+  Transparency logs, permanently and publicly searchable. Neither touches message
+  content, which stays end-to-end encrypted; both are things to weigh, and to tell
+  the people you host about.
 - Keep the server, the OS, and the container images updated. Security patching is
   part of "appropriate measures," not optional.
 - Restrict who can reach the box (firewall, no stray open ports) and who can log in
@@ -178,7 +187,7 @@ Relationship to other documents
   at it. Its "Self-hosting and the GDPR" section is the short form of this guide.
 - ETHICS.md — the operator-not-surveillant rule and the safety limitations you must
   be honest about.
-- ARCHITECTURE.md — the deployment shape (docker compose: sund, ntfy, caddy) and
-  what one database file contains.
+- ARCHITECTURE.md — the deployment shape (Deployment: profile A = sund + ntfy with
+  pinned TLS; profile B adds caddy) and what one database file contains.
 - ../sund/docs/Sund-PRD.md — the server's threat model: exactly what a host can and
   cannot observe.

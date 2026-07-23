@@ -57,8 +57,10 @@ workspace). beacon-protocol is Family Beacon's own layer. The packaging and
 language strategy for both is an open decision (see end of this document);
 what is fixed is the boundary between them.
 
-Note on implementations: the Sund system-test client (beaconsim, in Go) is a
-third implementation of much of this logic. Three implementations drift unless
+Note on implementations: the Sund system-test client (beaconsim, in Python —
+deliberately a different language from the Go server, so the wire format is
+exercised by an independent implementation) is a third implementation of much
+of this logic. Three implementations drift unless
 tested against one source of truth — this spec must ship machine-readable test
 vectors (sample envelopes, canonical encodings, consent scenarios) that every
 implementation verifies against.
@@ -257,7 +259,7 @@ Open items
    client code, not for this spec.
 2. Library implementation strategy: Kotlin Multiplatform (shared
    Android/iOS), a Rust core with generated bindings, or per-platform native
-   implementations disciplined by the shared test vectors. beaconsim (Go)
+   implementations disciplined by the shared test vectors. beaconsim (Python)
    exists regardless — the test-vector discipline is needed in every variant,
    so it is decided (see Versioning); the packaging choice is not.
 3. Receipt policy details: whether "delivered" receipts (not "seen") should

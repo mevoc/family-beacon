@@ -25,8 +25,11 @@ lightweight client/server architecture. See `ARCHITECTURE.md` for the vision.
   adds no server endpoints of its own.
 - **End-to-end encrypted** — content is readable only on family devices; the host
   who runs the server is an operator, not a viewer.
-- **Deploy** — `docker compose up -d` brings up Sund, ntfy (Android wake-up), and
-  Caddy. Backup is copying one database file.
+- **Deploy** — `docker compose up -d` brings up Sund and ntfy (Android wake-up).
+  Sund terminates TLS itself with a fingerprint-pinned certificate, so there is no
+  domain, no DNS and no certificate authority to arrange. Add Caddy in front only
+  if you want the web client, an internet-facing self-hosted ntfy, or port 443
+  reachability. Backup is copying one database file.
 
 ## Layout
 
@@ -34,7 +37,7 @@ lightweight client/server architecture. See `ARCHITECTURE.md` for the vision.
 | --- | --- |
 | `apps/android`, `apps/ios`, `apps/web` | Client applications |
 | `shared/protocol`, `shared/models` | Client-side protocol library and shared models |
-| `docker/compose`, `docker/caddy` | Self-hosting deployment (Sund + ntfy + Caddy) |
+| `docker/compose`, `docker/caddy` | Self-hosting deployment (Sund + ntfy; Caddy for the domain profile) |
 | `docs/` | Architecture, protocol, design, and hosting documentation |
 
 The server is **not** in this repo — it is Sund (Go + SQLite), maintained

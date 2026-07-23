@@ -57,7 +57,7 @@ shared/
 
 docker/
     compose/
-    caddy/
+    caddy/      (domain profile only — see Deployment)
 
 docs/
 
@@ -78,7 +78,8 @@ Stack (locked July 2026 — see ../sund/docs/Sund-PRD.md, decision 10):
 
 - Go + SQLite: one static binary, one database file
 - Docker Compose for packaging
-- Caddy (preferred) or Nginx in front for TLS
+- TLS terminated by Sund itself (pinned mode); a reverse proxy only in the
+  domain profile — see Deployment
 
 Notes on the change from the original sketch (Kotlin/Ktor + PostgreSQL + Redis):
 
@@ -224,13 +225,50 @@ Target deployment:
 
 docker compose up -d
 
-Containers:
+Two profiles. A is the default; B is what the web client requires.
 
-- sund (the server: one static binary; its SQLite file lives in a volume)
+Profile A — home box, mobile clients (default)
+
+- sund (the server: one static binary; its SQLite file lives in a volume),
+  run with `--tls-dir`: it terminates TLS itself with a fingerprint-pinned
+  self-signed certificate. The pin travels in the onboarding QR as part of the
+  server address (`sund://host:port#fingerprint`); clients verify against it
+  per ../sund/docs/Sund-Pinning-Contract.md.
 - ntfy (optional: self-hosted UnifiedPush distributor for Android wake-up)
-- caddy
 
-Nothing more should be required. Backup is copying one database file.
+No domain, no DNS, no ACME, no reverse proxy. This is the only shape in which
+"docker compose up -d and nothing more" is literally true — a domain and DNS
+were never things compose could bring up. Works on a bare IP or on the LAN.
+
+Profile B — domain deployment
+
+Adds caddy in front, terminating ordinary WebPKI TLS. Required when:
+
+- the web client is used. A browser cannot implement the pinning contract —
+  there is no API to pin, and a request to a self-signed origin simply fails.
+  apps/web structurally needs a real domain and a publicly trusted certificate,
+  plus something to serve its static files. Caddy is both.
+- ntfy is self-hosted and internet-facing. The phone-side UnifiedPush
+  distributor does ordinary WebPKI and has no notion of Sund's pin, so that leg
+  needs a trusted certificate whatever Sund does. (Using a public distributor
+  such as ntfy.sh removes this; Sund→ntfy stays on the compose network and
+  needs nothing.)
+- reachability on port 443 matters. Pinned mode on :5870 is blocked by many
+  hotel, school and corporate networks. For a safety app that is a worse
+  failure than anything else on this page, and it is the one reason to choose
+  B even for a mobile-only family. Caddy is also what multiplexes 443 by SNI
+  when both Sund and ntfy want it.
+
+What B costs, and must be documented honestly: it re-introduces exactly what
+pinning removes (domain, DNS, ports 80/443, ACME); the proxy terminates TLS, so
+it is a component that sees Sund's API metadata in clear and logs it by default
+— a residual-metadata surface Sund's own threat model does not cover, so the
+reference Caddyfile disables access logging; and a publicly trusted certificate
+puts the household's hostname in Certificate Transparency logs permanently and
+publicly. Payload confidentiality is unaffected either way — content is
+end-to-end encrypted below the transport.
+
+Backup is copying one database file, in both profiles.
 
 ---
 
