@@ -57,9 +57,14 @@ Layering
 The libraries are deliberately separable. sund-client contains nothing
 about families or locations — it is the client half of Sund itself, reusable
 by any project that adopts Sund as a backend (several candidates exist in this
-workspace). beacon-protocol is Family Beacon's own layer. The packaging and
-language strategy for both is an open decision (see end of this document);
-what is fixed is the boundary between them.
+workspace). beacon-protocol is Family Beacon's own layer.
+
+Both are **Rust crates behind UniFFI bindings** (decided July 2026, CLAUDE.md
+decision #6). Everything in the stack above from `beacon-protocol` down through
+`sund-client` is one Rust core; the "Family Beacon apps" row is native per
+platform. Reusability was the point of the split and the core is its strongest
+form — but the boundary between the two crates is what this spec fixes, and it
+holds regardless of packaging.
 
 The transport port and the second backend
 
@@ -102,10 +107,11 @@ Transport assumptions (provided by sund-client, not specified here)
 - Each pair of devices in the family shares a duplex pair of blind queues
   (Sund implementation guide, Walkthrough 2) plus an established end-to-end
   session providing confidentiality, integrity, sender authentication and
-  forward secrecy. The session primitive is an open decision (established
-  double-ratchet implementation vs. a Noise-based channel — adopt, don't
-  build); this spec is agnostic: it defines the plaintext handed to the
-  session layer.
+  forward secrecy. The session primitive is decided (July 2026): a double
+  ratchet, implemented by vodozemac — Noise was rejected because its transport
+  phase assumes a reliable ordered stream and this transport is deliberately
+  lossy. See CLAUDE.md decision #6. This spec stays agnostic regardless: it
+  defines the plaintext handed to the session layer and nothing below it.
 - Delivery is at-least-once (queue redelivery is possible) and per-queue
   ordered, but cross-queue order is undefined. Hence dedupe ids and sequence
   numbers below.
@@ -299,14 +305,13 @@ Versioning and compatibility
 
 Open items
 
-1. Session primitive: established double-ratchet implementation vs.
-   Noise-based channel. Owned by sund-client's design; blocking for any
-   client code, not for this spec.
-2. Library implementation strategy: Kotlin Multiplatform (shared
-   Android/iOS), a Rust core with generated bindings, or per-platform native
-   implementations disciplined by the shared test vectors. beaconsim (Python)
-   exists regardless — the test-vector discipline is needed in every variant,
-   so it is decided (see Versioning); the packaging choice is not.
+1. ~~Session primitive.~~ **Decided July 2026: a double ratchet (vodozemac).**
+   See Transport assumptions above and CLAUDE.md decision #6.
+2. ~~Library implementation strategy.~~ **Decided July 2026: a Rust core with
+   UniFFI bindings**, carrying everything from this spec down through
+   sund-client; native code owns only the app layer. beaconsim (Python) remains
+   the independent third implementation, so the test-vector discipline of
+   Versioning is unaffected and still gates everything.
 3. Receipt policy details: whether "delivered" receipts (not "seen") should
    be default-on for location to power staleness UI, or whether seq-gap
    detection suffices.

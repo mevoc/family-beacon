@@ -93,6 +93,29 @@ Consequence for grouping: member grouping is local, unsigned, advisory metadata.
 A device asserts its own `member_group` label in `member_info`; receivers may use
 it to group rows and may override it locally. Nothing security-relevant reads it.
 
+**Decided (July 2026): grouping is labelling only — there is no verification that
+two devices belong to the same person, and none is wanted.** Verifying it would
+need a person-level identity key, which is the very machinery the device-as-
+principal decision avoids, and it would buy nothing: no grant, no channel and no
+removal consults the group. A mislabelled group is a cosmetic error, visible to
+everyone in the family, and it is corrected the way any label is. Clients must
+therefore never present grouping as an assurance — "Dad's phone and Dad's iPad"
+is how the rows are sorted, not a claim the app has checked.
+
+Family size
+
+**Bounded at 20 devices** (July 2026), as a build-time constant, not a
+configuration key. It sizes the two things that grow: full-mesh pairing at
+N·(N−1) channels (380 at the cap) and `roster_sync` at O(N) per sync. Twenty is
+comfortably above any real family and comfortably below where either becomes a
+design problem, so the constant exists to fail honestly rather than to be tuned.
+
+Enforcement is at admission: a vouch that would exceed the cap is refused, with a
+plain message on both the introducer's and the joiner's screen. It is never
+enforced by silently dropping traffic or degrading sync — a family that hits the
+cap must be told it has, not discover it as flakiness. Tombstoned devices do not
+count toward the cap; only `active` records do.
+
 Roles
 
 Roles ("parent", "child", "adult") exist as **labels that seed defaults** — the
@@ -340,6 +363,40 @@ Rule 5 is the counterpart of the admission rule, and rule 1 is what makes a
 lost-phone removal reliable in a family whose devices are rarely all online at
 once.
 
+Split families — mutual eviction
+
+Two devices can remove each other, concurrently or in ignorance of each other.
+Both tombstones are valid and tombstones are monotonic, so the roster partitions:
+each side holds a removal for a device that holds a removal for it, and different
+members may have seen only one of the two.
+
+**Decided (July 2026): surface it, do not resolve it.** There is no principled
+winner — the two removals are signed by equally authorized devices, and any
+automatic tie-break (earlier timestamp, lower device id, larger surviving
+partition) would let a device manufacture the outcome by choosing its clock, its
+id, or its moment. Worse, a tie-break would resolve *silently* an event that is
+almost always a human conflict, which is the failure mode ETHICS.md forbids
+everywhere else: presenting a state that is not the true one.
+
+So the state machine keeps both tombstones and the app says what happened:
+
+- Detection is local and needs no coordination — a device holds a tombstone for
+  D while D holds one for it, which any device learns from its own roster plus
+  the next `roster_sync`.
+- The UI states the split plainly, names both parties, and shows **who can still
+  see whom** from this device's point of view. The user's actual question is
+  "am I still connected to my daughter", and that is answerable locally even
+  though the family-wide picture is not.
+- Both removals are already ledgered as ordinary removal events; the split gets
+  its own ledger entry naming both sides.
+- The exit is the ordinary one: whoever is meant to still be in the family
+  re-joins by the join ceremony, with a fresh device id (see Re-admission). No
+  special merge path exists, and none should be added.
+
+This is a rare, human-caused state. The design goal is that a person reading the
+screen understands what happened to their family, not that the software quietly
+picks a side.
+
 Sund mode: reconciling against the server device list
 
 The server's list is consulted every wake and before any new pairing (Sund
@@ -391,25 +448,18 @@ phone" is the standard; a row of ids is not.
 
 Open items
 
-1. **Eviction conflicts.** Two devices removing each other simultaneously
-   partitions the family, since tombstones are monotonic and both are valid.
-   Detectable (each sees a tombstone for a device that has tombstoned it) and
-   currently unhandled. Probably wants a UI-level "the family has split, here is
-   who sees what" rather than an automatic resolution — automatic resolution
-   means picking a winner, and there is no principled winner. Not blocking for a
-   first implementation; blocking before v1 ships to families.
-2. **Family size bound.** The full-mesh pairing is N·(N−1) channels and
-   `roster_sync` is O(N) per sync. Fine at ten devices, unclear at fifty. Decide
-   a supported maximum and enforce it honestly rather than degrading.
-3. **Vouch rate limiting.** A hostile member can introduce arbitrarily many
-   devices, each of which is admitted at default-deny but still consumes
-   channels, quota (charged to the *recipient*, per Sund's threat model) and
-   attention. A cap per introducer per epoch, or an approval requirement above a
-   threshold, is the likely answer.
-4. **Member grouping across devices.** Advisory labels are enough to draw the UI;
-   whether the app should offer to *verify* that two devices belong to one person
-   (and what that would even mean without a person-level key) is open. Related to
-   design-guide open decision 14.
+1. ~~Eviction conflicts.~~ **Decided July 2026: surfaced at the UI, never
+   auto-resolved.** See Reconciliation → Split families.
+2. ~~Family size bound.~~ **Decided July 2026: 20 devices, a build-time
+   constant, enforced at admission.** See The model → Family size.
+3. **Vouch rate limiting.** A hostile member can introduce devices up to the
+   size cap, each admitted at default-deny but still consuming channels, quota
+   (charged to the *recipient*, per Sund's threat model) and attention. The
+   20-device cap bounds the damage but does not address the churn case — repeated
+   introduce/remove cycles are unbounded. A cap per introducer per epoch is the
+   likely answer. Open, and the only remaining item here that touches security.
+4. ~~Member grouping across devices.~~ **Decided July 2026: labelling only, no
+   verification.** See The model → Consequence for grouping.
 5. **Founding-device special case.** The founder self-vouches, so a family's
    entire trust structure roots in one QR-less act. Whether a second device should
    co-sign the founding record before the family grows past two is worth deciding.

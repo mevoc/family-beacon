@@ -279,19 +279,26 @@ run from the other side. Noted in `../../sund/docs/Sund-ImplementationGuide.md`
 
 Open items
 
-1. **Language/runtime for the headless system-test client.** Falls out of open
-   decision #6 (library packaging): with Kotlin Multiplatform the harness is a
-   JVM test binary; with a Rust core it is whatever the bindings suit. Blocked on
-   that decision, not on this document.
-2. **Where the contract suite physically lives** so both repos can run it — a
-   Gradle module here, or something more portable. Interacts with #1.
+1. ~~Language/runtime for the headless system-test client.~~ **Resolved by
+   decision #6 (July 2026): a Rust core**, so tiers 1–3 are `cargo test` against
+   the real crates — the same artifacts the apps bind, which is what tier 3
+   demands ("a system test whose client is a mockup tests the mockup"). No JVM or
+   emulator is involved below tier 4, which makes the fast tiers genuinely fast.
+2. ~~Where the contract suite physically lives.~~ **Resolved with #1: a crate in
+   `core/`**, runnable by `cargo test -p <suite>` from either repo's CI with
+   nothing but a Rust toolchain and the Sund image. This is the portability the
+   item was asking for — Sund's CI checks out this repo at a pinned ref and runs
+   it, per Consumer contract tests.
 3. **GHCR package visibility** (public, or a read token in this repo's secrets).
    Blocking for any CI that pulls the image.
-4. **`docker/compose/.env.example`** is referenced by the compose file's header
-   but does not exist yet; the CI override sidesteps it by setting its variables
-   inline.
+4. ~~`docker/compose/.env.example` does not exist.~~ Added (July 2026).
 5. **Emulator matrix breadth** — how many API levels are worth the nightly
-   minutes, and whether iOS gets a physical-device stage at all before v1.
+   minutes. iOS is out of scope for now under the Android-first sequencing
+   (ARCHITECTURE.md → Client platforms and build order); revisit when iOS work
+   starts.
+6. **Cross-compilation in CI.** New with the Rust core: Android NDK targets,
+   iOS xcframework and wasm builds all have to be wired up before tier 4 can run
+   on a real device. Not blocking for tiers 1–3, which are host-native.
 
 ---
 

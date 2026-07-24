@@ -39,8 +39,12 @@ police is honesty about residual metadata (Sund's threat model) — see #5.
 - **Backend:** Go + SQLite — one static binary, one database file (locked July
   2026 per `../sund/docs/Sund-PRD.md` decision 10; supersedes the original
   Ktor + PostgreSQL sketch). Intended server: `../sund`, terminating pinned TLS
-  itself (no reverse proxy by default — see Deployment). Intentionally small. Kotlin stays for the Android client / shared client code.
-- **Clients:** `apps/android`, `apps/ios`, `apps/web`. Push only *wakes* the app
+  itself (no reverse proxy by default — see Deployment). Intentionally small.
+- **Client core:** `core/` — a Rust workspace (`beacon-protocol`, `sund-client`,
+  UniFFI bindings) holding envelope, session crypto, consent, ledger and roster,
+  bound into every app (decision #6). Kotlin is the Android *app* layer only.
+- **Clients:** `apps/android`, `apps/ios`, `apps/web` — **Android first**, to a
+  complete v1 safety core, before iOS or web start (decision #10). Push only *wakes* the app
   (payload-free pings; UnifiedPush/ntfy on Android, APNS via vendor gateway on
   iOS) — data is always drained from Sund queues, never carried in the push.
 - **Offline philosophy:** graceful degradation. Clients cache config, queue location
@@ -107,13 +111,54 @@ police is honesty about residual metadata (Sund's threat model) — see #5.
    GDPR for self-hosting (household exemption; hosting beyond the household may
    create data-controller duties). The protocol spec's consent state machine and
    ledger rule are the protocol-level half of the same guarantees.
-6. **Client library packaging.** The client code splits into two reusable
-   libraries — app-agnostic `sund-client` (identity, pairing, sessions, queues,
-   push) and FB-specific `beacon-protocol` (envelope, types, consent, ledger);
-   the boundary is fixed in `docs/FamilyBeacon-Protocol.md` (Layering) so
-   sund-client can be reused by other projects. Open: implementation strategy —
-   Kotlin Multiplatform, a Rust core with generated bindings, or per-platform
-   native code disciplined by the spec's shared test vectors.
+6. **Client library packaging — CLOSED (July 2026): a Rust core with UniFFI
+   bindings, session crypto by vodozemac.** The client code splits into two
+   reusable libraries — app-agnostic `sund-client` (identity, pairing, sessions,
+   queues, push) and FB-specific `beacon-protocol` (envelope, types, consent,
+   ledger); the boundary is fixed in `docs/FamilyBeacon-Protocol.md` (Layering)
+   so sund-client can be reused by other projects. Resolved together with the
+   session primitive, because the two were never separable — the audited
+   double-ratchet implementations are Rust, so the crypto choice decided the
+   language.
+   - **Session primitive: a double ratchet, not Noise.** Delivery here is
+     at-least-once and deliberately lossy (short TTLs; Try mode's cache window
+     drops messages permanently), so skipped-message-key handling is required —
+     Noise's transport phase assumes a reliable ordered stream, and adding
+     out-of-order handling plus rekeying to it means *building* the ratchet the
+     spec says to adopt. A ratchet also gives post-compromise recovery, which the
+     stolen-device and hostile-member scenarios need.
+   - **Implementation: vodozemac** (Matrix's Rust Olm — X3DH + double ratchet),
+     Apache-2.0 and independently audited. Chosen over libsignal, which is the
+     better-audited library but is **AGPL-3.0-only** and would force the clients
+     off MIT. Revisit only if that licensing trade is deliberately accepted;
+     libsignal additionally brings PQXDH, which vodozemac does not have.
+   - **One-time prekeys: run in fallback-key mode.** Sund stores key bundles
+     opaquely and does not pop one-time prekeys (Sund's Architecture Principle
+     forbids interpreting them), so concurrent fetchers would reuse an OTK. Olm's
+     signed fallback key is the built-in answer: use it with frequent rotation and
+     accept signed-prekey-grade forward secrecy for the initial message only,
+     until the first ratchet step. Do not ask Sund for a pop-prekey primitive.
+   - **The split:** Rust owns everything from `beacon-protocol` down through
+     `sund-client` — envelope codec, session crypto, the roster state machine
+     (#9), the consent state machine, offline outbox, transport port. Native owns
+     the app layer: UI, location/geofence, push registration, background
+     scheduling, biometrics, notifications, local storage. That is the layering
+     doc's own seam, not a new one.
+   - **Known costs, accepted:** NDK cross-compilation, xcframework packaging and
+     wasm-pack in CI from day one; worse cross-FFI debugging. UniFFI friction
+     concentrates on async and callbacks — and the transport port is
+     `subscribe → stream`, so design that boundary deliberately rather than
+     assuming the generator handles it. The core must be drivable from outside
+     (WorkManager, BGTask) rather than owning its own loop.
+   - Rejected: **Kotlin Multiplatform** — best on the platform shipping first, but
+     no audited multiplatform double ratchet exists, so it either re-adds per-
+     platform FFI or writes the ratchet by hand. **Per-platform native** — three
+     or four implementations of the roster merge and consent state machines,
+     forever; test vectors catch encoding drift well and state-machine drift
+     poorly, which is exactly backwards for this codebase. **MLS/OpenMLS** — needs
+     a totally-ordered group delivery service; Sund gives per-pair queues with
+     undefined cross-queue order by design, and the protocol has no group
+     semantics on the wire.
 7. **Urgent contact vs. SOS — CLOSED (July 2026): two separate v1 features,
    different in kind.** "Contact me urgently" (`attention`) is directed at one
    member, overrides their ringer, carries no data, and is an inbound *allow*

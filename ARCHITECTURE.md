@@ -51,9 +51,17 @@ apps/
     ios/
     web/
 
+core/           (Rust workspace — the shared client core, bound into every app)
+    beacon-protocol/  (envelope + message types, consent state machine,
+                       transparency ledger, family roster state machine)
+    sund-client/      (device identity, pairing, sessions, queues, push,
+                       offline outbox; app-agnostic, reusable)
+    bindings/         (UniFFI: Kotlin and Swift; wasm for the web client)
+
 shared/
-    protocol/    (envelope + message types — the client-side application protocol)
-    models/
+    protocol/
+        testvectors/  (canonical here; consumed by ../sund's CI at a pinned
+                       ref, never vendored — see docs/FamilyBeacon-Testing.md)
 
 docker/
     compose/
@@ -67,6 +75,12 @@ README.md
 The server itself lives in ../sund (its own repo). This repo contains the
 clients, the client-side protocol, and deployment configuration — there is no
 server/ directory to write.
+
+`core/` holds everything from beacon-protocol down through sund-client as one
+Rust core (CLAUDE.md decision #6); `apps/` holds only the platform layer — UI,
+location and geofencing, push registration, background scheduling, biometrics,
+notifications and local storage. The former `shared/models/` folds into the core:
+models that were going to be duplicated per platform now exist once.
 
 ---
 
@@ -90,8 +104,11 @@ Notes on the change from the original sketch (Kotlin/Ktor + PostgreSQL + Redis):
 - PostgreSQL and Redis are dropped. SQLite is the database; at family scale
   there is no load that justifies separate database and cache processes, and
   backup becomes copying one file.
-- Kotlin is not gone — it remains the natural choice for the Android client
-  and shared client code. Only the server-side Ktor preference is superseded.
+- Kotlin is not gone, but its scope narrowed twice. The server-side Ktor
+  preference is superseded by Go + SQLite; shared client code is Rust as of
+  CLAUDE.md decision #6. Kotlin remains the language of the Android app layer —
+  UI, location and geofencing, notifications, local storage — which is where the
+  code being ported from ../family-beacon-android already lives.
 
 ---
 
