@@ -119,6 +119,9 @@ services:
       BEACON_DOMAIN: ${BEACON_DOMAIN:?set BEACON_DOMAIN in .env}
       NTFY_DOMAIN: ${NTFY_DOMAIN:-ntfy.invalid}
       ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+      # Empty in production. Only compose.ci.yaml sets it, to `tls internal`,
+      # so CI can exercise this exact Caddyfile without a domain or ACME.
+      CADDY_TLS: ${CADDY_TLS:-}
     depends_on:
       - sund
     networks:

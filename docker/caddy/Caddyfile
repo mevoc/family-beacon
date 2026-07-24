@@ -37,6 +37,12 @@
 # --- Sund: the relay API ---------------------------------------------------
 
 {$BEACON_DOMAIN} {
+	# Empty in production — Caddy then does the right thing by default (ACME
+	# against Let's Encrypt). CI sets it to `tls internal` so this real file,
+	# rather than a CI-only copy that would drift from it, is what gets tested;
+	# see docker/compose/compose.ci.yaml. Leave it unset in your .env.
+	{$CADDY_TLS}
+
 	# Access logging OFF, stated explicitly rather than left to the default, so
 	# that it survives someone pasting a `log` block in from a tutorial. Every
 	# request here is a family member's device checking in; a log line per
@@ -94,6 +100,8 @@
 # instead of depending on NAT hairpinning — see docker/compose/compose.yaml.
 
 {$NTFY_DOMAIN} {
+	{$CADDY_TLS}   # see the note in the Sund site block above
+
 	log {
 		output discard
 	}
