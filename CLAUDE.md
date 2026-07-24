@@ -122,8 +122,8 @@ police is honesty about residual metadata (Sund's threat model) — see #5.
    into the v1 safety core; spec in `docs/FamilyBeacon-Protocol.md`, product/UX
    rules in the design guide ("Two urgent channels"), the interruption-budget
    rule normative in ETHICS.md.
-8. **Try mode (serverless ntfy transport) — DECIDED IN SHAPE (July 2026), open
-   in timing.** To remove the adoption cliff (profile A still presupposes an
+8. **Try mode (serverless ntfy transport) — DECIDED IN SHAPE (July 2026);
+   SEQUENCED AFTER SUND MODE.** To remove the adoption cliff (profile A still presupposes an
    operator, a machine that stays up, and Docker — asked *before* the family has
    seen the product work), Family Beacon gains a second transport: the same
    E2E-encrypted envelopes over an ntfy instance, joined by QR, no server to
@@ -146,10 +146,17 @@ police is honesty about residual metadata (Sund's threat model) — see #5.
      app never presents Try mode as equivalent to a Sund deployment.
    - It does **not** help iOS — no third-party push distributor exists there, so
      an iOS client still needs the vendor APNS gateway of decision #2.
-   Open: whether it ships at v1 or after, and the blocking sub-item — state
-   reconciliation after cache-window loss, without which `consent_update` /
-   `config_update` are not merely weaker but incorrect. Remaining open items are
-   listed in the spec.
+   **Timing — decided July 2026: not before Sund mode works end to end.** Try
+   mode is additive and touches no normative guarantee, so it costs nothing to
+   defer and would cost a lot to build against an unproven transport layer:
+   the port has no second implementation to keep honest until the first one
+   ships. Build Sund mode, then add ntfy-client behind the same port. Define
+   the port now regardless — it is also the seam that lets the libraries be
+   unit-tested against an in-memory transport, so it earns its keep before Try
+   mode exists.
+   Still open: state reconciliation after cache-window loss, which is blocking
+   for Try mode — without it `consent_update` / `config_update` are not merely
+   weaker but incorrect. Remaining open items are listed in the spec.
 
 ## Porting from family-beacon-android
 

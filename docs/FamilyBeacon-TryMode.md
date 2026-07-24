@@ -311,9 +311,14 @@ Open items
    it removes the bearer-capability and third-party-operator problems while
    keeping the cache-window and revocation ones. Worth specifying, or worth
    refusing as a rung too many?
-4. **Whether Try mode ships at v1 or after.** It is additive and touches no
-   normative guarantee, but it is a second transport to keep correct, and the
-   test-vector discipline must cover both.
+4. ~~Whether Try mode ships at v1 or after.~~ **Decided July 2026: after.** Not
+   before Sund mode works end to end. Try mode is additive and touches no
+   normative guarantee, so deferring costs nothing, while building it against an
+   unproven transport layer costs a lot — until the first implementation ships
+   there is nothing for the port to be honest about. The port is still defined
+   now: it doubles as the seam that lets the client libraries be unit-tested
+   against an in-memory transport, so it pays for itself before ntfy-client
+   exists. The test-vector discipline must then cover both transports.
 5. **Scope limiting.** Should Try mode refuse to enable some feature set — for
    instance geofence notifications, whose value depends on reliable delivery —
    rather than offering everything at lower reliability?
