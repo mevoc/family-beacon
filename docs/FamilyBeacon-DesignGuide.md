@@ -648,7 +648,10 @@ beacon-protocol types and are tracked as open decisions below.
 Platform strategy
 
 Parity of capability and honesty across Android, iOS, and web; native where the
-platform demands it.
+platform demands it — but not simultaneously. **Android ships first, to a
+complete v1 safety core** (ARCHITECTURE.md → Client platforms and build order;
+CLAUDE.md decision #10), then web as a companion, then iOS once the gateway
+question of decision #2 is answered.
 
 - Android — fullest capability. Background/foreground location, geofences, and
   self-hostable push via UnifiedPush/ntfy. Port selectively from
@@ -754,6 +757,10 @@ Relationship to other documents
 - docs/FamilyBeacon-Protocol.md — the wire protocol; wins on what is on the
   wire. Its consent state machine and ledger rule are the enforcement layer under
   this guide's consent and transparency UX.
+- docs/FamilyBeacon-Roster.md — the membership state machine under the pairing
+  and leaving/revoking flows above, and under the member matrix. Note its
+  device-as-principal decision: the matrix's per-person rows are a grouping over
+  per-device grants, not a person-level grant.
 - ../sund/docs/Sund-Status.md — what the backend actually provides today
   (constrains iOS push, media, and availability promises).
 - CLAUDE.md — decision index; promote hardened product/UX decisions here as

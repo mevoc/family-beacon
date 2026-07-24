@@ -78,9 +78,11 @@ identical in both modes, envelope and consent and ledger alike.
 
 What the port deliberately does NOT carry is Sund's management plane — device
 registry, key bundles, invitations, server-enforced revocation. Those become
-explicit client-side logic in the family roster layer, and Sund mode implements
-that logic *more strongly* by also using its management plane (server-side key
-kill and queue retirement) rather than only rotating client-side. Widening the
+explicit client-side logic in the family roster layer — specified in
+FamilyBeacon-Roster.md, whose wire types are part of this document's registry
+(see Message types → roster) — and Sund mode implements that logic *more
+strongly* by also using its management plane (server-side key kill and queue
+retirement) rather than only rotating client-side. Widening the
 port until both backends fit would design Sund mode down to the weaker backend's
 level; the difference between the modes is surfaced to the user instead of being
 abstracted away (TryMode → Honesty rule).
@@ -233,9 +235,21 @@ config_update
     need appears.
 
 member_info
-    display_name; avatar deferred to a future version (needs Sund's blob
-    module, a Non-goal until Family Beacon forces it — see Future versions).
-    Sent on join and on change.
+    display_name, member_group, role, proto_v; avatar deferred to a future
+    version (needs Sund's blob module, a Non-goal until Family Beacon forces
+    it — see Future versions). Sent on join and on change. All of these fields
+    are self-asserted labels and confer no authority (FamilyBeacon-Roster.md →
+    The model). Not an admission path: a member_info from a device with no
+    roster record is ledgered as unknown-sender and dropped.
+
+roster_introduce / roster_remove / roster_sync
+    Membership: a signed vouch admitting a device, a signed tombstone removing
+    one, and a periodic full-roster digest for reconciliation. Bodies,
+    signature rules, the admission and removal state machine and the
+    reconciliation merge rules are specified in FamilyBeacon-Roster.md; they
+    are v1 types and are listed here because the registry is one list. Never
+    consent-gated — membership is the precondition for features, not a feature.
+    Always ledgered as discrete, readable events.
 
 receipt
     of (message id), status (delivered | seen; plus suppressed and the reply
@@ -453,6 +467,9 @@ new server trust.
 Relationship to other documents
 
 - ../ARCHITECTURE.md — names this spec (Core API section).
+- FamilyBeacon-Roster.md — the membership layer this spec's Layering names:
+  who is in the family, how a device is admitted and removed, and why the
+  server's device list is not the authority on either.
 - FamilyBeacon-TryMode.md — the second implementation of the transport port
   above: the serverless ntfy mode, what it gives up, and the honesty rule that
   keeps the swap visible to the user.

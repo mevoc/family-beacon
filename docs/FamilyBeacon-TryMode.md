@@ -331,6 +331,9 @@ Relationship to other documents
   profiles A and B.
 - `FamilyBeacon-Protocol.md` → Layering — defines the transport port this mode
   implements; everything above the port is unchanged.
+- `FamilyBeacon-Roster.md` — the membership logic the seam rule pushes above the
+  port. Try mode runs its client-side half only (epoch rotation, no server-side
+  key kill), which is one of the two serious degradations above.
 - `../ETHICS.md`, `../PRIVACY.md` — the honesty rule above is an application of
   their existing requirements; PRIVACY.md → Third parties states the ntfy
   operator's position.

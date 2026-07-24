@@ -119,9 +119,15 @@ protocol specified in docs/FamilyBeacon-Protocol.md (a versioned envelope
 - settings / consent sync (was GET /commands + POST /ack; consent state is
                            exchanged between clients, never seen by the server)
 
-Family membership (was GET /family + POST /invite) maps onto Sund's account
-device list and invitation flow — see the walkthroughs in
-../sund/docs/Sund-ImplementationGuide.md.
+Family membership (was GET /family + POST /invite) rides Sund's account
+invitation flow — see the walkthroughs in
+../sund/docs/Sund-ImplementationGuide.md — but is *decided* client-side, in the
+family roster layer (docs/FamilyBeacon-Roster.md). The Sund account bounds the
+family; the roster determines it. A device is admitted only on a signed vouch
+from an existing member, never on the strength of the server's device list,
+because a dishonest host can add a row to that list and clients that trusted it
+would pair with an injected device. The list is authoritative for revocation and
+for locating key material only.
 
 Communication uses HTTPS with JSON against Sund; payloads are opaque
 ciphertext.
@@ -171,6 +177,48 @@ Sund's model — keys, not sessions:
 
 ---
 
+Client platforms and build order
+
+Three clients ship eventually — apps/android, apps/ios, apps/web — at parity of
+capability and honesty (design guide → Platform strategy). They are not built at
+once.
+
+**Decided July 2026: Android first, to a complete v1 safety core, before iOS or
+web start.** The order is not a preference about audiences; it is where the
+blockers are not:
+
+- Android is the only platform where the whole stack is self-hostable today.
+  UnifiedPush with a self-hosted ntfy distributor closes the wake-up path with no
+  vendor in it, which is the architecture this document argues for. iOS cannot
+  demonstrate that property at all.
+- Sund's push provider interface has exactly one implementation — UnifiedPush.
+  The iOS APNS gateway is unbuilt (Sund-Status → Not built yet), and who operates
+  it is CLAUDE.md decision #2, still open. Starting iOS means resolving an open
+  question about running a vendor service before a single family has used the
+  product.
+- Android has code to port. GeofenceHelper, LocationFgService, the consent flow,
+  AuthHelper, the Room event log and UI screens all come from
+  ../family-beacon-android; iOS starts from nothing.
+- Background location and geofencing are least constrained on Android, so the
+  features that most shape the protocol get exercised earliest and hardest.
+
+Consequences, stated so they are not discovered later:
+
+- **The iOS gateway question is deferred, not answered.** CLAUDE.md decisions #2
+  and #4 stay open; they are simply no longer on the critical path to first code.
+  They must be resolved before iOS work starts, not before Android ships.
+- **Android-first must not become Android-shaped.** The client libraries
+  (sund-client, beacon-protocol) are specified to be reusable and are held to
+  that by the shared test vectors and by beaconsim, which is a third
+  implementation in a third language. A protocol decision that is convenient only
+  on Android is a bug caught here, not a fait accompli.
+- Web is the second client and is scoped as a companion first (viewing, config,
+  ledger, family management) rather than full parity — design-guide open decision
+  2, unchanged by this sequencing. Note that the web client is the one that makes
+  deployment profile B mandatory rather than merely recommended.
+
+---
+
 Push Notifications
 
 Instead of SMS — and instead of the original FCM sketch:
@@ -192,7 +240,8 @@ app; actual data is always drained from Sund queues over the API.
 
 Still open (CLAUDE.md decisions 2 and 4): who operates the iOS gateway and
 what availability it promises, and what the SOS path guarantees when wake-up
-is slow or down.
+is slow or down. Off the critical path as of the Android-first sequencing above
+— both must be resolved before iOS work starts, neither blocks Android.
 
 Not open, whatever that decision lands on: Family Beacon promises **no
 guaranteed SOS delivery** and is **not a route to emergency services**. The SOS

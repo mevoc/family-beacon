@@ -83,6 +83,9 @@ police is honesty about residual metadata (Sund's threat model) — see #5.
    requires a vendor-operated APNS gateway seeing wake timing only — "no lock-in"
    is unattainable there, only containment. Resolve together with #4 (SOS path
    when wake-up is slow or down).
+   **Deferred, not answered (July 2026):** decision #10 sequences Android first,
+   so the gateway question leaves the critical path. Resolve both before iOS work
+   starts; neither blocks Android.
 3. **Skerry coupling — CLOSED (July 2026): consume `../sund`.** Family Beacon
    depends on Sund — the Layer-1 kernel extracted from Skerry (`../skerry`) — and
    on nothing else of Skerry. The app exercises the kernel both projects share,
@@ -157,6 +160,40 @@ police is honesty about residual metadata (Sund's threat model) — see #5.
    Still open: state reconciliation after cache-window loss, which is blocking
    for Try mode — without it `consent_update` / `config_update` are not merely
    weaker but incorrect. Remaining open items are listed in the spec.
+9. **Family roster — CLOSED (July 2026): specified in
+   `docs/FamilyBeacon-Roster.md`.** The membership layer decision #8 pushed above
+   the transport port, previously named in the layering diagrams and specified
+   nowhere. Fixed by that spec:
+   - **The consent principal is a device, not a person.** Members are a display
+     grouping over devices; grants, channels, ledger entries and revocation all
+     name a device. A "share with all of Dad's devices" convenience expands into
+     per-device grants and never becomes one grant a future device inherits.
+   - **The server's device list is not the authority on membership.** Admission
+     requires a signed vouch from an existing member, carried end-to-end. An
+     abusive host can add a row to Sund's `devices` table; a client that admitted
+     peers from that list would pair with an injected device. The list stays
+     authoritative for revocation and for locating key material — a host can deny
+     service, visibly, and cannot inject.
+   - **No in-app admin.** Roles are labels that seed defaults and never confer
+     authority over another device. Any active device may remove any other; a
+     device may always remove itself and leave. Chosen against the abusive-member
+     case: concentrating removal in an admin hands the wrong person a lock, and
+     the permissive rule's failure mode (eviction, loud and ledgered) is
+     recoverable while the restrictive one's is not.
+   - Channels are established automatically on join, consent is not — the channel
+     is the pipe and the valve ships closed, so a new member can raise an SOS
+     before anyone has tapped Accept.
+   Open items in the spec: eviction conflicts (blocking before v1 ships to
+   families, not before implementation), family size bound, vouch rate limiting.
+10. **Client build order — CLOSED (July 2026): Android first**, to a complete v1
+   safety core, before iOS or web start. Rationale in ARCHITECTURE.md (Client
+   platforms and build order): Android is the only platform where the whole stack
+   is self-hostable today, Sund's only push provider is UnifiedPush, and it is the
+   platform with code to port from `../family-beacon-android`. Consequences:
+   decisions #2 and #4 are deferred off the critical path (resolve before iOS
+   starts); the client libraries must not become Android-shaped, which the shared
+   test vectors and beaconsim (a third implementation, third language) are there
+   to enforce; web is second and scoped as a companion first.
 
 ## Porting from family-beacon-android
 
@@ -184,6 +221,11 @@ SMS command model is the thing being replaced.
   versioned envelope, message types (location/battery/sos/attention/geofence/
   consent/config/member_info/receipt), consent state machine, ledger rule, library
   layering (sund-client / beacon-protocol), test-vector discipline.
+- `docs/FamilyBeacon-Roster.md` — the membership layer (decision #9): device-as-
+  principal, the vouch-based admission protocol, removal and tombstones,
+  reconciliation, and why the server's device list is not the authority on who is
+  in the family. Read it before touching pairing, family management or
+  revocation in any client.
 - `docs/FamilyBeacon-DesignGuide.md` — the app/client design guide (living):
   product functionality, UX principles, core flows, per-platform strategy, and
   app-level design decisions. The middle layer between the normative docs and the
