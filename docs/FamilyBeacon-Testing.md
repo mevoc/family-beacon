@@ -1,7 +1,7 @@
 Family Beacon — Testing and CI strategy
 
-Status: v0.2 (Draft) — the deployment-topology job is implemented; tiers 1–3
-await `core/`
+Status: v0.3 (Draft) — tier 1 and the deployment-topology job are implemented;
+tiers 2–3 await the HTTP transport
 
 How Family Beacon is tested, and specifically how it is tested *together with*
 Sund — which lives in another repo (`../sund`), ships as a container image, and
@@ -202,10 +202,19 @@ failure is legible next to a passing pinned run.
 
 What CI runs today
 
-`.github/workflows/ci.yml` exists and covers the deployment topology below —
-the only part of this strategy that has anything to execute, since the Rust
-core is not scaffolded yet. Tiers 1–3 get their own jobs above it when `core/`
-lands.
+`.github/workflows/ci.yml` has two jobs:
+
+- **`core`** — tier 1. `cargo fmt --check`, `cargo clippy --all-targets -D
+  warnings` and `cargo test` over the `core/` workspace: `beacon-protocol`'s
+  envelope codec, consent state machine and ledger vocabulary, `sund-client`'s
+  signed-request form and transport port, the in-memory transport, and the
+  shared vectors below. No server, no network, no device.
+- **`topology`** — tier 4's deployment half, described below.
+
+Tiers 2 and 3 are not there yet, because what they drive does not exist: the
+HTTP implementation of the transport port. That is the next piece of
+`sund-client`, and when it lands the contract suite becomes a crate that both
+repos' CI can run (see The reverse direction).
 
 The invocation is exact and all three arguments are load-bearing:
 
@@ -219,16 +228,10 @@ doing more than it looks like — see the topology section below.
 
 Reference shape for the tiers that do not exist yet
 
-Adopt when there is code to build; the shape is stable, the build steps are not:
+The unit job above is real; this is the shape the rest takes when there is code
+for it to drive:
 
     jobs:
-      unit:
-        runs-on: ubuntu-latest
-        steps:
-          - uses: actions/checkout@v7
-          # in-memory transport; no services needed
-          - run: cargo test -p beacon-protocol -p sund-client
-
       contract-and-system:
         runs-on: ubuntu-latest
         steps:
@@ -295,9 +298,17 @@ Shared test vectors — where they live
 
 The vectors gate both `beacon-protocol` implementations *and* beaconsim, which
 lives in the Sund repo. They therefore need a canonical home both CIs can
-consume. Decision: **canonical in this repo, under `shared/protocol/testvectors/`**
-(the directory already exists in the repo structure), consumed by Sund's CI via a
-checkout at a pinned ref.
+consume. Decision: **canonical in this repo, under `shared/protocol/testvectors/`**,
+consumed by Sund's CI via a checkout at a pinned ref.
+
+`envelopes.json` exists and is live: one case per v1 message type, plus the
+mixed-version case (an unknown type from a newer peer, which must decode and be
+ledgered rather than rejected) and the deliberately malformed ones. Each case
+carries the expected outcome and, for rejections, a stable reason tag —
+`beacon-protocol`'s vector suite maps its Rust reasons onto those tags
+explicitly, so renaming one without the other fails the build. A test also
+asserts the corpus covers every type in the registry, because a type nobody
+wrote a vector for is a type nothing gates.
 
 The alternative — vendoring a copy into Sund — was rejected: two copies of a
 conformance corpus drift, and drift in the corpus is worse than drift in the

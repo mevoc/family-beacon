@@ -1,0 +1,36 @@
+[workspace]
+resolver = "3"
+members = ["beacon-protocol", "sund-client"]
+
+# The Rust core of CLAUDE.md decision #6. Everything from beacon-protocol down
+# through sund-client lives here and is bound into every app; the app layer
+# (UI, location, geofence, push registration, background scheduling, storage)
+# stays native per platform. The seam is the one FamilyBeacon-Protocol.md →
+# Layering already draws, not a new one.
+#
+# The UniFFI binding crate is deliberately absent until there is an app-facing
+# API worth binding — it costs NDK cross-compilation, xcframework packaging and
+# wasm-pack in CI (decision #6, "Known costs, accepted"), and none of that is
+# needed for tiers 1-3, which are host-native. Add it with the first Android
+# integration, not before.
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+repository = "https://github.com/mevoc/family-beacon"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ed25519-dalek = "2"
+sha2 = "0.10"
+base64 = "0.22"
+
+[workspace.lints.rust]
+missing_docs = "warn"
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+todo = "warn"
+unwrap_used = "warn"

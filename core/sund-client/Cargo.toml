@@ -1,0 +1,16 @@
+[package]
+name = "sund-client"
+version = "0.1.0"
+description = "Generic, app-agnostic client half of Sund: request signing, transport port, and an in-memory transport for tests"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+base64 = { workspace = true }
+ed25519-dalek = { workspace = true }
+sha2 = { workspace = true }
+
+[lints]
+workspace = true

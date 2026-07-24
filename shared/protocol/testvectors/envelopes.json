@@ -1,0 +1,379 @@
+{
+  "description": "Canonical envelope test vectors for Family Beacon protocol v1. Canonical HERE (docs/FamilyBeacon-Testing.md -> Shared test vectors); consumed by beacon-protocol and, by checkout at a pinned ref, by Sund's beaconsim. Never vendor a second copy: two copies of a conformance corpus drift, and drift in the corpus hides drift in the implementations.",
+  "envelope_version": 1,
+  "expectations": {
+    "accept": "decodes to a known type, from the authenticated sender",
+    "unknown_type": "decodes, but this build does not know the type: ledger it by name, drop the body, acknowledge nothing",
+    "reject": "refused at the boundary, with the reason tag given"
+  },
+  "reject_reasons": [
+    "malformed",
+    "unsupported_version",
+    "empty_field",
+    "body_not_object",
+    "bad_timestamp",
+    "sender_mismatch"
+  ],
+  "cases": [
+    {
+      "name": "location",
+      "expect": "accept",
+      "authenticated_sender": "dev_A",
+      "envelope": {
+        "v": 1,
+        "id": "018f9a2c-0001",
+        "seq": 412,
+        "type": "location",
+        "sent": "2026-07-19T10:04:12Z",
+        "sender": "dev_A",
+        "body": {
+          "lat": 56.0465,
+          "lon": 12.6945,
+          "accuracy_m": 12,
+          "recorded_at": "2026-07-19T10:04:10Z",
+          "battery": 62
+        }
+      }
+    },
+    {
+      "name": "battery",
+      "expect": "accept",
+      "authenticated_sender": "dev_A",
+      "envelope": {
+        "v": 1,
+        "id": "018f9a2c-0002",
+        "seq": 413,
+        "type": "battery",
+        "sent": "2026-07-19T10:05:00Z",
+        "sender": "dev_A",
+        "body": { "level_pct": 14, "charging": false }
+      }
+    },
+    {
+      "name": "sos",
+      "expect": "accept",
+      "authenticated_sender": "dev_A",
+      "envelope": {
+        "v": 1,
+        "id": "018f9a2c-0003",
+        "seq": 414,
+        "type": "sos",
+        "sent": "2026-07-19T10:06:31Z",
+        "sender": "dev_A",
+        "body": {
+          "recorded_at": "2026-07-19T10:06:30Z",
+          "last_location": { "lat": 56.0465, "lon": 12.6945, "accuracy_m": 30 },
+          "note": "bike accident"
+        }
+      }
+    },
+    {
+      "name": "sos_clear",
+      "expect": "accept",
+      "authenticated_sender": "dev_A",
+      "envelope": {
+        "v": 1,
+        "id": "018f9a2c-0004",
+        "seq": 415,
+        "type": "sos_clear",
+        "sent": "2026-07-19T10:21:02Z",
+        "sender": "dev_A",
+        "body": { "of": "018f9a2c-0003" }
+      }
+    },
+    {
+      "name": "attention",
+      "expect": "accept",
+      "authenticated_sender": "dev_B",
+      "envelope": {
+        "v": 1,
+        "id": "018f9a2c-0005",
+        "seq": 12,
+        "type": "attention",
+        "sent": "2026-07-19T17:40:00Z",
+        "sender": "dev_B",
+        "body": { "reason": "call me when you can", "recorded_at": "2026-07-19T17:39:58Z" }
+      }
+    },
+    {
+      "name": "geofence_event",
+      "expect": "accept",
+      "authenticated_sender": "dev_C",
+      "envelope": {
+        "v": 1,
+        "id": "018f9a2c-0006",
+        "seq": 88,
+        "type": "geofence_event",
+        "sent": "2026-07-19T15:02:11Z",
+        "sender": "dev_C",
+        "body": { "fence_id": "school", "transition": "exit", "recorded_at": "2026-07-19T15:02:09Z" }
+      }
+    },
+    {
+      "name": "consent_update",
+      "expect": "accept",
+      "authenticated_sender": "dev_A",
+      "envelope": {
+        "v": 1,
+        "id": "018f9a2c-0007",
+        "seq": 416,
+        "type": "consent_update",
+        "sent": "2026-07-19T18:00:00Z",
+        "sender": "dev_A",
+        "body": { "feature": "location", "action": "revoke" }
+      }
+    },
+    {
+      "name": "config_update",
+      "expect": "accept",
+      "authenticated_sender": "dev_A",
+      "envelope": {
+        "v": 1,
+        "id": "018f9a2c-0008",
+        "seq": 417,
+        "type": "config_update",
+        "sent": "2026-07-19T18:01:00Z",
+        "sender": "dev_A",
+        "body": {
+          "key": "fence.school",
+          "value": { "lat": 56.04, "lon": 12.69, "radius_m": 150 },
+          "owner_rev": 3
+        }
+      }
+    },
+    {
+      "name": "member_info",
+      "expect": "accept",
+      "authenticated_sender": "dev_C",
+      "envelope": {
+        "v": 1,
+        "id": "018f9a2c-0009",
+        "seq": 1,
+        "type": "member_info",
+        "sent": "2026-07-19T09:00:00Z",
+        "sender": "dev_C",
+        "body": { "display_name": "Emma", "member_group": "emma", "role": "child", "proto_v": 1 }
+      }
+    },
+    {
+      "name": "roster_introduce",
+      "expect": "accept",
+      "authenticated_sender": "dev_A",
+      "envelope": {
+        "v": 1,
+        "id": "018f9a2c-000a",
+        "seq": 418,
+        "type": "roster_introduce",
+        "sent": "2026-07-19T09:01:00Z",
+        "sender": "dev_A",
+        "body": { "device_id": "dev_C", "vouched_by": "dev_A", "signature": "BASE64", "at": "2026-07-19T09:00:59Z" }
+      }
+    },
+    {
+      "name": "roster_remove",
+      "expect": "accept",
+      "authenticated_sender": "dev_A",
+      "envelope": {
+        "v": 1,
+        "id": "018f9a2c-000b",
+        "seq": 419,
+        "type": "roster_remove",
+        "sent": "2026-07-20T09:00:00Z",
+        "sender": "dev_A",
+        "body": { "device_id": "dev_D", "removed_by": "dev_A", "signature": "BASE64", "at": "2026-07-20T08:59:59Z" }
+      }
+    },
+    {
+      "name": "roster_sync",
+      "expect": "accept",
+      "authenticated_sender": "dev_A",
+      "envelope": {
+        "v": 1,
+        "id": "018f9a2c-000c",
+        "seq": 420,
+        "type": "roster_sync",
+        "sent": "2026-07-20T09:05:00Z",
+        "sender": "dev_A",
+        "body": { "devices": ["dev_A", "dev_B", "dev_C"], "tombstones": ["dev_D"], "digest": "BASE64" }
+      }
+    },
+    {
+      "name": "receipt",
+      "expect": "accept",
+      "authenticated_sender": "dev_B",
+      "envelope": {
+        "v": 1,
+        "id": "018f9a2c-000d",
+        "seq": 13,
+        "type": "receipt",
+        "sent": "2026-07-19T17:41:00Z",
+        "sender": "dev_B",
+        "body": { "of": "018f9a2c-0005", "status": "suppressed" }
+      }
+    },
+    {
+      "name": "unknown type from a newer peer",
+      "note": "The v0.2 presence heartbeat meeting a v0.1 build. Survivable by design: a family is a permanently mixed-version deployment.",
+      "expect": "unknown_type",
+      "authenticated_sender": "dev_B",
+      "envelope": {
+        "v": 1,
+        "id": "018f9a2c-000e",
+        "seq": 14,
+        "type": "presence",
+        "sent": "2026-07-19T17:45:00Z",
+        "sender": "dev_B",
+        "body": { "state": "home", "since": "2026-07-19T17:10:00Z" }
+      }
+    },
+    {
+      "name": "unknown body field on a known type",
+      "note": "Type-level evolution is additive; unknown body fields are ignored, never errors.",
+      "expect": "accept",
+      "authenticated_sender": "dev_A",
+      "envelope": {
+        "v": 1,
+        "id": "018f9a2c-000f",
+        "seq": 421,
+        "type": "battery",
+        "sent": "2026-07-19T18:10:00Z",
+        "sender": "dev_A",
+        "body": { "level_pct": 40, "charging": true, "cycle_count": 812 }
+      }
+    },
+    {
+      "name": "future envelope version",
+      "expect": "reject",
+      "reason": "unsupported_version",
+      "authenticated_sender": "dev_A",
+      "envelope": {
+        "v": 2,
+        "id": "018f9a2c-0010",
+        "seq": 1,
+        "type": "location",
+        "sent": "2026-07-19T10:04:12Z",
+        "sender": "dev_A",
+        "body": {}
+      }
+    },
+    {
+      "name": "forged sender",
+      "note": "The sender field is attribution after decryption, never the source of trust.",
+      "expect": "reject",
+      "reason": "sender_mismatch",
+      "authenticated_sender": "dev_B",
+      "envelope": {
+        "v": 1,
+        "id": "018f9a2c-0011",
+        "seq": 1,
+        "type": "location",
+        "sent": "2026-07-19T10:04:12Z",
+        "sender": "dev_A",
+        "body": { "lat": 56.0, "lon": 12.0, "accuracy_m": 10 }
+      }
+    },
+    {
+      "name": "empty id",
+      "expect": "reject",
+      "reason": "empty_field",
+      "authenticated_sender": "dev_A",
+      "envelope": {
+        "v": 1,
+        "id": "",
+        "seq": 1,
+        "type": "location",
+        "sent": "2026-07-19T10:04:12Z",
+        "sender": "dev_A",
+        "body": {}
+      }
+    },
+    {
+      "name": "empty sender",
+      "expect": "reject",
+      "reason": "empty_field",
+      "authenticated_sender": "dev_A",
+      "envelope": {
+        "v": 1,
+        "id": "018f9a2c-0012",
+        "seq": 1,
+        "type": "location",
+        "sent": "2026-07-19T10:04:12Z",
+        "sender": "",
+        "body": {}
+      }
+    },
+    {
+      "name": "body is not an object",
+      "expect": "reject",
+      "reason": "body_not_object",
+      "authenticated_sender": "dev_A",
+      "envelope": {
+        "v": 1,
+        "id": "018f9a2c-0013",
+        "seq": 1,
+        "type": "location",
+        "sent": "2026-07-19T10:04:12Z",
+        "sender": "dev_A",
+        "body": "56.0465,12.6945"
+      }
+    },
+    {
+      "name": "timestamp without a zone",
+      "expect": "reject",
+      "reason": "bad_timestamp",
+      "authenticated_sender": "dev_A",
+      "envelope": {
+        "v": 1,
+        "id": "018f9a2c-0014",
+        "seq": 1,
+        "type": "location",
+        "sent": "2026-07-19T10:04:12",
+        "sender": "dev_A",
+        "body": {}
+      }
+    },
+    {
+      "name": "timestamp with an impossible month",
+      "expect": "reject",
+      "reason": "bad_timestamp",
+      "authenticated_sender": "dev_A",
+      "envelope": {
+        "v": 1,
+        "id": "018f9a2c-0015",
+        "seq": 1,
+        "type": "location",
+        "sent": "2026-13-19T10:04:12Z",
+        "sender": "dev_A",
+        "body": {}
+      }
+    },
+    {
+      "name": "missing body",
+      "expect": "reject",
+      "reason": "malformed",
+      "authenticated_sender": "dev_A",
+      "envelope": {
+        "v": 1,
+        "id": "018f9a2c-0016",
+        "seq": 1,
+        "type": "location",
+        "sent": "2026-07-19T10:04:12Z",
+        "sender": "dev_A"
+      }
+    },
+    {
+      "name": "not JSON at all",
+      "expect": "reject",
+      "reason": "malformed",
+      "authenticated_sender": "dev_A",
+      "raw": "dev_A: 56.0465,12.6945"
+    },
+    {
+      "name": "seq is not a number",
+      "expect": "reject",
+      "reason": "malformed",
+      "authenticated_sender": "dev_A",
+      "raw": "{\"v\":1,\"id\":\"x\",\"seq\":\"412\",\"type\":\"location\",\"sent\":\"2026-07-19T10:04:12Z\",\"sender\":\"dev_A\",\"body\":{}}"
+    }
+  ]
+}

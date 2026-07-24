@@ -4,10 +4,16 @@ Privacy-focused, self-hosted family safety: live location, geofences, battery
 status, SOS and arrival/departure notifications between trusted family devices,
 coordinated by a small server the family runs themselves.
 
-**Status: greenfield — no code yet.** `ARCHITECTURE.md` (the founding vision doc)
-defines the shape. Successor to `../family-beacon-android`, the original SMS-based
-peer-to-peer app, which is kept frozen as-is; port client code from it selectively
-(see below), but its SMS command layer is dead by design.
+**Status: the Rust core has begun (July 2026); no app yet.** `core/` holds
+`beacon-protocol` (envelope codec, message registry, consent state machine,
+ledger vocabulary) and `sund-client` (the signed-request form, the transport
+port, an in-memory transport) — tier 1 of the testing strategy, running in CI.
+Not yet written: the HTTP transport, session crypto, the roster state machine,
+the UniFFI bindings, and every app. `ARCHITECTURE.md` (the founding vision doc)
+defines the shape; `core/README.md` maps what exists against what does not.
+Successor to `../family-beacon-android`, the original SMS-based peer-to-peer
+app, which is kept frozen as-is; port client code from it selectively (see
+below), but its SMS command layer is dead by design.
 
 ---
 
