@@ -68,9 +68,13 @@
 	# client IPs.
 	reverse_proxy sund:5870
 
-	# Match Sund's own 1 MiB body cap, so oversized bodies are refused at the
-	# edge instead of being streamed to the relay first. (Message payloads are
-	# capped far lower, at 64 KiB, by Sund itself.)
+	# Match Sund's own 1 MiB body cap. A backstop, not a gate: this installs a
+	# read limit, and because reverse_proxy streams, Sund answers an oversized
+	# request before the limit is ever reached — measured against Caddy 2.11.4,
+	# a 2 MiB POST comes back as Sund's own 400 and Caddy logs nothing. What it
+	# does buy is a bound if an upstream drains the body instead of rejecting
+	# it early. Do not expect a 413 here. (Message payloads are capped far
+	# lower, at 64 KiB, by Sund itself.)
 	request_body {
 		max_size 1MB
 	}

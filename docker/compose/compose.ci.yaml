@@ -7,7 +7,8 @@
 #   - the services come up healthy and in the right order
 #   - Caddy routes both hostnames and passes request paths through UNREWRITTEN
 #     (a correctness requirement — devices sign the path; see ../caddy/Caddyfile)
-#   - the request-body cap applies at the edge
+#   - an oversized request body is refused (by Sund's cap, not Caddy's — see
+#     the note in the CI workflow's assertion)
 #   - the ntfy network alias resolves inside the compose network, which is the
 #     least obvious line in compose.yaml and the likeliest to break silently
 #

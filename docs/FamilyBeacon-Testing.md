@@ -264,10 +264,18 @@ Profile B cannot do ACME in CI — no domain, no public reachability. But ACME i
 the least interesting part of that stack. What is worth testing is the topology:
 that Caddy routes both hostnames, that **paths pass through unrewritten** (a
 correctness requirement, since devices sign the path — see the Caddyfile's
-warning about `handle_path`), that the request-body cap applies, and above all
+warning about `handle_path`), that an oversized body is refused, and above all
 that the `ntfy` network alias resolves inside the compose network. That alias is
 the least obvious line in `docker/compose/compose.yaml` and exactly the kind of
 thing that breaks silently.
+
+One correction the first real run produced, worth keeping written down: the
+oversized-body case is refused by **Sund's** 1 MiB cap, not by Caddy's
+`request_body max_size`. Because `reverse_proxy` streams, the upstream answers
+before Caddy's read limit is reached — a 2 MiB POST returns Sund's 400 and Caddy
+logs nothing (Caddy 2.11.4). The edge cap is a backstop for an upstream that
+drains the body, and a test asserting 413 asserts a behaviour the stack does not
+have.
 
 `docker/compose/compose.ci.yaml` handles this by putting Caddy on its internal
 CA (`tls internal`) instead of Let's Encrypt, so the *real* Caddyfile is
@@ -288,7 +296,7 @@ Concretely, the job asserts: TLS and routing for the Sund vhost verified
 against the exported CI root; `GET /v1/devices` arriving at Sund unrewritten
 (401, where a 404 would mean Caddy rewrote the signed path); the same request
 straight to the published relay port agreeing, so a failure localises to one
-layer; a 2 MiB body refused at the edge; both hostnames routed; the ntfy alias
+layer; a 2 MiB body refused; both hostnames routed; the ntfy alias
 resolving from inside the compose network; and `sund admin account create
 --json` returning a usable family.
 

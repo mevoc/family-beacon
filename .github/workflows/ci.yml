@@ -157,11 +157,26 @@ jobs:
           fi
           printf 'ok    same path direct to the relay agrees (HTTP %s)\n' "$direct"
 
-          # The edge body cap (1 MiB, matching Sund's own) refuses oversized
-          # bodies before they are streamed to the relay.
+          # An oversized body is refused. Asserted as "some 4xx", not as a 413
+          # from Caddy, because 413 is not what this topology produces:
+          # `request_body max_size` installs a read limit, and with a streaming
+          # reverse_proxy the upstream answers first — Sund's own 1 MiB cap
+          # rejects the request before Caddy's limit is ever reached. Measured
+          # against Caddy 2.11.4 and this Sund build: the client sees Sund's
+          # 400 and Caddy logs nothing at all. The edge cap is a backstop for an
+          # upstream that drains the body, not the gate that refuses it, and
+          # asserting 413 would assert a behaviour this stack does not have.
           head -c 2097152 /dev/zero | tr '\0' 'a' > big.bin
-          check 413 "2 MiB body refused at the edge by request_body max_size" \
-            -X POST --data-binary @big.bin https://beacon.test/v1/devices/register
+          oversized=$("${CURL[@]}" -o /dev/null -w '%{http_code}' \
+            -X POST --data-binary @big.bin \
+            https://beacon.test/v1/devices/register || true)
+          case "$oversized" in
+            4??) printf 'ok    2 MiB body refused (HTTP %s)\n' "$oversized" ;;
+            *)
+              echo "FAIL  2 MiB body was not refused — got HTTP $oversized"
+              exit 1
+              ;;
+          esac
 
           # The ntfy vhost: the second hostname Caddy has to route.
           check 200 "ntfy /v1/health through Caddy" https://ntfy.test/v1/health
