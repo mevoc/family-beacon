@@ -1,7 +1,7 @@
 Family Beacon — Testing and CI strategy
 
-Status: v0.3 (Draft) — tier 1 and the deployment-topology job are implemented;
-tiers 2–3 await the HTTP transport
+Status: v0.4 (Draft) — tiers 1 and 2 and the deployment-topology job are
+implemented; tier 3 awaits session crypto and the roster
 
 How Family Beacon is tested, and specifically how it is tested *together with*
 Sund — which lives in another repo (`../sund`), ships as a container image, and
@@ -71,18 +71,61 @@ the unit-test seam first.
 
 Runs per-commit. Milliseconds.
 
-Tier 2 — Contract. Real Sund binary, no app.
+Tier 2 — Contract. Real Sund binary, no app. **Implemented** (July 2026) in
+`core/contract-tests`, run per-commit by the `contract` job.
 
 Drives `sund-client` against a real relay and asserts the things only a real
 server can falsify: enrollment and invitation consumption, the signing scheme,
-queue lifecycle and rotation, revocation taking effect, quota behaviour at the
-cap, and both address forms of the pinning contract
+queue lifecycle and rotation, revocation taking effect, the size caps, and both
+address forms of the pinning contract
 (`../../sund/docs/Sund-Pinning-Contract.md`) — `sund://…#fingerprint` against a
 `--tls-dir` server, `sund+webpki://…` against a plain-HTTP server behind a proxy
 with a trusted certificate.
 
 This is the tier that catches drift between the two repos, and it is the highest
 value per minute of CI time.
+
+How it is arranged, and why:
+
+- **Both relays, every assertion.** The CI stack runs two: `sund` behind Caddy
+  (profile B, WebPKI mode) and `sund-pinned` terminating its own TLS (profile A).
+  Each test body runs against every configured leg, because the claim being
+  tested is that the trust mode is orthogonal to the API — a claim worth
+  falsifying rather than assuming. A leg with no address in the environment is
+  skipped, loudly; `SUND_CONTRACT_REQUIRED=1` (set in CI) turns "nothing was
+  configured" into a failure, so a misconfigured job cannot report green having
+  asserted nothing.
+- **One test binary.** Each relay is bootstrapped from a single-use invitation,
+  so the founding device can be enrolled exactly once per process and every
+  later device joins through an invitation that founder mints — the real
+  ceremony. A second `tests/*.rs` file would be a second process against an
+  already-spent token, so the suite's modules live under `tests/contract/` and
+  are pulled in with `#[path]`.
+- **The port's own promises are asserted twice**, over the in-memory transport
+  and over real Sund queues, from one function (`tests/contract/port.rs`). That
+  is what stops the port from quietly coming to mean "whatever Sund does", and
+  it is where `ntfy-client` joins when Try mode is built.
+- **The environment is what gets adjusted for WebPKI mode, never the client.**
+  The hostname has to resolve (a `/etc/hosts` line in CI; DNS in production) and
+  the CI certificate authority has to be trusted (`SSL_CERT_FILE`, which the
+  platform trust store already reads). The pinning contract calls WebPKI mode
+  "the platform's default TLS client with no options changed" (§8.2), so a test
+  that needed the client to relax something would be testing a client nobody
+  ships.
+
+Two things the first real run against a live relay corrected, both worth keeping
+written down:
+
+- A **pin mismatch surfaced as a network error**, not as an identity failure.
+  rustls carries the verification error in `io::Error::get_ref()`, while
+  `source()` returns the *inner* error's source and skips it — so the obvious
+  walk finds nothing and an intercepting network becomes indistinguishable from
+  an absent one, which is exactly what §8.3 says must not happen. `sund-client`'s
+  `agent::is_tls_failure` handles it and `pinning.rs` asserts it.
+- The pinned relay **crash-looped on a certificate directory it could not
+  write.** Sund's image chowns only `/data` to the distroless nonroot uid, so a
+  named volume mounted anywhere else arrives root-owned; the CI stack keeps the
+  CA under `/data/certs`.
 
 Runs per-commit.
 
@@ -202,19 +245,22 @@ failure is legible next to a passing pinned run.
 
 What CI runs today
 
-`.github/workflows/ci.yml` has two jobs:
+`.github/workflows/ci.yml` has three jobs:
 
 - **`core`** — tier 1. `cargo fmt --check`, `cargo clippy --all-targets -D
   warnings` and `cargo test` over the `core/` workspace: `beacon-protocol`'s
   envelope codec, consent state machine and ledger vocabulary, `sund-client`'s
-  signed-request form and transport port, the in-memory transport, and the
-  shared vectors below. No server, no network, no device.
+  signed-request form, address parsing, transport port and Sund transport
+  against a scripted HTTP client, the in-memory transport, and the shared
+  vectors below. No server, no network, no device.
+- **`contract`** — tier 2, against both relays of the CI stack, with the same
+  pinned/canary matrix as `topology`.
 - **`topology`** — tier 4's deployment half, described below.
 
-Tiers 2 and 3 are not there yet, because what they drive does not exist: the
-HTTP implementation of the transport port. That is the next piece of
-`sund-client`, and when it lands the contract suite becomes a crate that both
-repos' CI can run (see The reverse direction).
+Tier 3 is not there yet, because what it would drive does not exist: session
+crypto and the roster state machine, i.e. clients that can hold a conversation
+rather than a queue. The contract suite is already the portable crate the
+reverse direction needs (see The reverse direction).
 
 The invocation is exact and all three arguments are load-bearing:
 
@@ -226,13 +272,13 @@ The invocation is exact and all three arguments are load-bearing:
 which is what makes Sund's `health` subcommand pay off. The `--env-file` is
 doing more than it looks like — see the topology section below.
 
-Reference shape for the tiers that do not exist yet
+The shape of a server-backed job
 
-The unit job above is real; this is the shape the rest takes when there is code
-for it to drive:
+The `contract` job is the worked example; tier 3 will be the same shape with a
+longer test invocation:
 
     jobs:
-      contract-and-system:
+      contract:
         runs-on: ubuntu-latest
         steps:
           - uses: actions/checkout@v7
@@ -243,22 +289,32 @@ for it to drive:
             run: |
               docker compose $COMPOSE exec -T sund \
                 /sund admin account create --json > account.json
-          - run: cargo test -p contract-tests -p system-tests
+          - run: cargo test -p contract-tests -- --test-threads=1
           - if: failure()
             run: docker compose $COMPOSE logs
 
-The provisioning step is not hypothetical — the topology job already runs it,
-so the fixture every later tier bootstraps from is under test before there is a
-tier to use it.
+The provisioning step is not hypothetical — the topology job ran it before there
+was a suite to use it, which is why the fixture worked the first time the suite
+asked for one.
+
+`--test-threads=1` is not superstition: the suite provisions devices and queues
+on a shared relay, and a serial run keeps a failure's server-side logs readable.
+The whole thing takes under a second against a local relay, so there is nothing
+to buy back with parallelism.
 
 ---
 
 Deployment topology tests
 
-Profile A is easy: `sund --tls-dir` on a random port, no domain, no proxy.
-Sund's own `tls_sund` fixture already produces the pinned address; the client's
-job is to verify against it and to *refuse* correctly when the fingerprint does
-not match.
+Profile A is easy: `sund --tls-dir` on a random port, no domain, no proxy. The
+CI stack runs one as `sund-pinned`, and the client's job — verify against it,
+and *refuse* correctly when the fingerprint does not match — is asserted by
+tier 2's pinning module rather than here. What that module proves and a unit
+test cannot: that this client and Sund's `internal/tlsid` compute the same
+fingerprint over the same bytes, that a wrong pin fails as an identity error
+rather than a network one, that the pin travels with the server and not with
+its hostname, and that a pinned address pointed at the WebPKI deployment does
+not quietly succeed through platform trust.
 
 Profile B cannot do ACME in CI — no domain, no public reachability. But ACME is
 the least interesting part of that stack. What is worth testing is the topology:
@@ -361,7 +417,20 @@ Open items
    starts.
 6. **Cross-compilation in CI.** New with the Rust core: Android NDK targets,
    iOS xcframework and wasm builds all have to be wired up before tier 4 can run
-   on a real device. Not blocking for tiers 1–3, which are host-native.
+   on a real device. Not blocking for tiers 1–3, which are host-native. Note
+   that the wasm target additionally needs `sund-client` built with
+   `--no-default-features` (no `agent`) and an `HttpClient` over `fetch()`.
+7. **Two small things worth fixing upstream in Sund**, both found by standing
+   the profile A relay up for tier 2 and neither blocking:
+   - `sund health` always probes `http://`, so it cannot health-check a server
+     started with `--tls-dir`. The CI stack therefore declares no healthcheck
+     for `sund-pinned` and lets the suite wait by connecting.
+   - The image chowns only `/data` to the distroless nonroot uid, so
+     `SUND_TLS_DIR` pointed at any other volume crash-loops on a permission
+     error. Chowning the certificate directory too, or documenting the
+     constraint, would save the next person the log-reading.
+   (The third — adding `HEALTHCHECK` to the Dockerfile — is noted above under
+   Getting Sund into CI.)
 
 ---
 

@@ -6,11 +6,14 @@ coordinated by a small server the family runs themselves.
 
 **Status: the Rust core has begun (July 2026); no app yet.** `core/` holds
 `beacon-protocol` (envelope codec, message registry, consent state machine,
-ledger vocabulary) and `sund-client` (the signed-request form, the transport
-port, an in-memory transport) — tier 1 of the testing strategy, running in CI.
-Not yet written: the HTTP transport, session crypto, the roster state machine,
-the UniFFI bindings, and every app. `ARCHITECTURE.md` (the founding vision doc)
-defines the shape; `core/README.md` maps what exists against what does not.
+ledger vocabulary), `sund-client` (the signed-request form, server addresses and
+both transport-trust modes, the HTTP client, the two-plane API, the transport
+port with its Sund implementation and an in-memory one) and `contract-tests`
+(tier 2, driving the real libraries against a real relay in both modes). Tiers 1
+and 2 run in CI. Not yet written: session crypto, the roster state machine, the
+offline outbox, the UniFFI bindings, and every app. `ARCHITECTURE.md` (the
+founding vision doc) defines the shape; `core/README.md` maps what exists
+against what does not.
 Successor to `../family-beacon-android`, the original SMS-based peer-to-peer
 app, which is kept frozen as-is; port client code from it selectively (see
 below), but its SMS command layer is dead by design.

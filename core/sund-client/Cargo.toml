@@ -1,7 +1,7 @@
 [package]
 name = "sund-client"
 version = "0.1.0"
-description = "Generic, app-agnostic client half of Sund: request signing, transport port, and an in-memory transport for tests"
+description = "Generic, app-agnostic client half of Sund: request signing, the HTTP transport, and an in-memory transport for tests"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -10,7 +10,32 @@ repository.workspace = true
 [dependencies]
 base64 = { workspace = true }
 ed25519-dalek = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 sha2 = { workspace = true }
+
+# The `agent` feature: a blocking HTTP client implementing both transport-trust
+# modes of ../../../sund/docs/Sund-Pinning-Contract.md. Optional because the web
+# client can use none of it — a browser has no pinning API and no socket — and
+# supplies its own `HttpClient` over fetch() instead. See src/agent.rs.
+getrandom = { version = "0.4", optional = true }
+rustls = { version = "0.23", optional = true, default-features = false, features = ["std", "ring", "tls12", "logging"] }
+rustls-native-certs = { version = "0.8", optional = true }
+rustls-pki-types = { version = "1", optional = true }
+ureq = { version = "3.3", optional = true, default-features = false, features = ["rustls-no-provider"] }
+webpki-roots = { version = "1", optional = true }
+
+[features]
+default = ["agent"]
+# The shipping HTTP client. Turn it off for targets that cannot use it (wasm).
+agent = [
+    "dep:getrandom",
+    "dep:rustls",
+    "dep:rustls-native-certs",
+    "dep:rustls-pki-types",
+    "dep:ureq",
+    "dep:webpki-roots",
+]
 
 [lints]
 workspace = true

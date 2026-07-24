@@ -16,6 +16,12 @@
 # Caddyfile rather than copying them. A CI-only copy would drift from the real
 # thing and then vouch for nothing.
 #
+# It also carries a second relay, `sund-pinned`, which is deployment profile A —
+# Sund terminating its own pinned TLS, no proxy. That is here rather than in a
+# file of its own because tier 2's contract suite asserts *both* address forms
+# of the pinning contract and wants one `up` to give it both. See
+# ../../core/contract-tests/src/lib.rs for the environment it expects.
+#
 # What it does NOT test: ACME certificate issuance, real DNS, and internet
 # reachability. Those need a real domain and are out of CI's reach by nature.
 #
@@ -78,3 +84,47 @@ services:
       timeout: 3s
       retries: 12
       start_period: 5s
+
+  # --- profile A, for the pinning half of tier 2 --------------------------
+  #
+  # A second relay terminating its own pinned TLS (`--tls-dir`), i.e. the
+  # domain-less deployment profile of ../../ARCHITECTURE.md → Deployment. It is
+  # here and not in a file of its own because tier 2 asserts *both* address
+  # forms of ../../../sund/docs/Sund-Pinning-Contract.md, and the contract suite
+  # wants one `up` to give it both.
+  #
+  # Its own database and its own account: nothing is shared with the vhost
+  # relay above, and a test that mints a family on one cannot see it on the
+  # other.
+  #
+  # No healthcheck, deliberately. `sund health` always probes http:// (main.go,
+  # healthURL), so it cannot probe a server that terminates TLS itself; with no
+  # healthcheck declared, `--wait` treats the service as ready once it is
+  # running. The contract suite then waits for it by connecting, which is the
+  # more honest check anyway: it proves a *pinned* client completes the
+  # handshake.
+  sund-pinned:
+    image: ${SUND_IMAGE:-ghcr.io/mevoc/sund:latest}
+    restart: unless-stopped
+    command: ["serve"]
+    environment:
+      SUND_ADDR: ":5870"
+      SUND_DB: "/data/sund.db"
+      # Generated on first start: a self-signed offline CA and a leaf it signs.
+      # The CA's SPKI digest is the pin, read out with
+      #   docker compose … exec sund-pinned /sund cert fingerprint --tls-dir /data/certs
+      #
+      # Under /data on purpose. The image chowns only /data to the distroless
+      # nonroot uid (65532), so a named volume mounted anywhere else arrives
+      # root-owned and the server cannot write its CA there — it crash-loops on
+      # "tls: ca: open …: permission denied".
+      SUND_TLS_DIR: "/data/certs"
+    volumes:
+      - sund-pinned-data:/data
+    ports:
+      - "127.0.0.1:5871:5870"
+    networks:
+      - edge
+
+volumes:
+  sund-pinned-data:

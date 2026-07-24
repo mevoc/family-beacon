@@ -1,0 +1,15 @@
+[package]
+name = "contract-tests"
+version = "0.1.0"
+description = "Tier 2 of docs/FamilyBeacon-Testing.md: sund-client against a real Sund relay"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+sund-client = { path = "../sund-client" }
+
+[lints]
+workspace = true

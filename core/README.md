@@ -14,6 +14,9 @@ biometrics and local storage stay native per platform.
     transport port            send / subscribe / ack / channel lifecycle
     ─────────────────────────────────────────────────────────────────
     sund-client  │  ntfy-client (Try mode, deferred)
+      sund_transport            the port over Sund's queue pairs
+      client                    the two planes: signed / queue-authenticated
+      agent · address           HTTP, and the two transport-trust modes
     ─────────────────────────────────────────────────────────────────
     Sund server  │  ntfy instance
 
@@ -28,9 +31,10 @@ one, it is in the wrong crate.
 | Crate | Contents |
 | --- | --- |
 | `beacon-protocol` | Envelope codec and the v1 message-type registry, the consent state machine, the transparency ledger's vocabulary, and the receive path that binds an outcome to its ledger entry. |
-| `sund-client` | The canonical signed-request form (`sigauth`), the transport port, and an in-memory implementation of the port for tests. |
+| `sund-client` | The canonical signed-request form (`sigauth`), server addresses and both transport-trust modes (`address`, `agent`), the two-plane API client (`client`), the transport port and its Sund implementation (`transport`, `sund_transport`), and an in-memory implementation of the port for tests. |
+| `contract-tests` | Tier 2 of `docs/FamilyBeacon-Testing.md`: the shipping libraries against a real relay in both trust modes. Needs a server; see below. |
 
-Two design points worth knowing before adding to either:
+Design points worth knowing before adding to any of them:
 
 - **The receive path returns an outcome and a ledger entry together.** The
   ledger rule in `docs/FamilyBeacon-Protocol.md` has no exemptions, so there is
@@ -39,17 +43,29 @@ Two design points worth knowing before adding to either:
   from outside — WorkManager, BGTask — and callback-shaped streams are the
   worst part of the UniFFI surface. The core never assumes it may run whenever
   it likes.
+- **Trust is a property of the client, not of the call.** An `HttpClient` is
+  built for one server address and carries that address's trust mode, so no
+  request can be made in the wrong one. `HttpAgent` (feature `agent`, on by
+  default) is the shipping implementation of both modes; the web client will
+  supply its own over `fetch()`, because a browser can implement neither
+  pinning nor sockets.
+- **A duplex channel is two Sund queues, and they rotate separately.**
+  `sund_transport` holds that asymmetry so nothing above the port sees it. The
+  half we own is retired and recreated by us; the half the peer owns changes
+  when they tell us, and each new peer queue binds a fresh sender key.
 
 ## What is not here yet
 
-- **The HTTP implementation of the port.** Enrollment, queue lifecycle and
-  rotation against a real relay. This is what tier 2 of
-  `docs/FamilyBeacon-Testing.md` needs, and it is the next piece.
 - **Session crypto.** vodozemac, in fallback-key mode (decision #6). The
   protocol layer above it is deliberately agnostic: it defines the plaintext
-  handed to the session layer and nothing below it.
+  handed to the session layer and nothing below it. Until it lands, what
+  crosses the transport port is ciphertext only by convention.
 - **The roster state machine.** Specified in `docs/FamilyBeacon-Roster.md`;
-  its wire types are already in the registry here.
+  its wire types are already in the registry here, and the management-plane
+  calls it needs (device list, invitations, bundles, revocation) are in
+  `sund-client::client`.
+- **The offline outbox.** Queueing sends while the network is gone, and
+  retrying them, sits above the transport port and is not written.
 - **UniFFI bindings.** Deliberately absent until there is an app-facing API
   worth binding — they cost NDK cross-compilation, xcframework packaging and
   wasm-pack in CI, and none of that is needed for tiers 1–3, which are
@@ -61,5 +77,16 @@ Two design points worth knowing before adding to either:
     cargo clippy --all-targets -- -D warnings
     cargo fmt --check
 
-Nothing here needs a server, a network or a device. CI runs exactly these three
-commands as the `core` job.
+Nothing in tier 1 needs a server, a network or a device; CI runs exactly these
+three commands as the `core` job.
+
+The contract suite is the exception, by design — it exists to talk to a real
+Sund. It skips every leg the environment does not configure, so the commands
+above stay offline. To run it, stand the stack up and hand it the two addresses
+(`contract-tests/src/lib.rs` documents the whole invocation):
+
+    docker compose --env-file docker/compose/.env.ci \
+      -f docker/compose/compose.yaml -f docker/compose/compose.ci.yaml up -d --wait
+    export SUND_PINNED_ADDRESS="sund://127.0.0.1:5871#$(…cert fingerprint…)"
+    export SUND_PINNED_INVITATION=…
+    cargo test -p contract-tests -- --test-threads=1

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["beacon-protocol", "sund-client"]
+members = ["beacon-protocol", "contract-tests", "sund-client"]
 
 # The Rust core of CLAUDE.md decision #6. Everything from beacon-protocol down
 # through sund-client lives here and is bound into every app; the app layer

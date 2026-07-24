@@ -85,6 +85,19 @@ pub struct DeviceKey {
     signing: SigningKey,
 }
 
+/// A per-queue key, which signs on the transport plane.
+///
+/// Same primitive and same signing string as [`DeviceKey`], different key and
+/// different principal: a transport-plane request is authenticated by the queue
+/// key alone and carries no device id, which is what stops the server from
+/// linking a message to the device that sent it. Sund binds a queue's sender
+/// key on the first valid send and never rebinds it.
+///
+/// The alias exists so that call sites say which of the two they mean; nothing
+/// stops a caller passing an identity key here, and nothing should — the server
+/// only ever compares against the key the queue was created or bound with.
+pub type QueueKey = DeviceKey;
+
 impl DeviceKey {
     /// Build from a 32-byte seed. Generating and storing that seed is the app
     /// layer's job, because key storage is where the platforms genuinely differ

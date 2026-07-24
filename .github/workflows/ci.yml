@@ -1,15 +1,17 @@
 name: CI
 
-# Two jobs, from the tiers in docs/FamilyBeacon-Testing.md:
+# Three jobs, from the tiers in docs/FamilyBeacon-Testing.md:
 #
 #   core      tier 1 — the Rust core's unit suite and the shared test vectors.
 #             No server, no network, milliseconds.
+#   contract  tier 2 — the real client libraries against a real relay, in both
+#             transport-trust modes. The tier that catches drift between this
+#             repo and ../sund, which is why it runs per-commit.
 #   topology  tier 4's deployment half — profile B stood up for real against a
 #             published ghcr.io/mevoc/sund image, pulled anonymously.
 #
-# Tiers 2 (contract) and 3 (system) are not here yet: they need the HTTP
-# implementation of the transport port, which is the next piece of sund-client.
-# When it lands they join the core job's toolchain and the topology job's stack.
+# Tier 3 (system) is not here yet: it needs the session crypto and the roster
+# state machine, i.e. clients that can hold a conversation rather than a queue.
 
 on:
   push:
@@ -56,7 +58,102 @@ jobs:
       - name: test
         # Includes the shared test vectors under ../shared/protocol/testvectors,
         # which gate this crate and, at a pinned ref, Sund's beaconsim too.
+        # The contract crate's own unit tests run here; its suite needs a relay
+        # and runs in the job below.
         run: cargo test
+
+  contract:
+    name: Contract (tier 2, Sund ${{ matrix.sund }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Same canary arrangement as the topology job: per-commit runs use the
+        # pin in .env.ci, scheduled and manual runs add a leg against Sund's
+        # moving :latest that is allowed to fail loudly.
+        sund: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && fromJSON('["pinned", "latest"]') || fromJSON('["pinned"]') }}
+
+    continue-on-error: ${{ matrix.sund == 'latest' }}
+
+    env:
+      COMPOSE: >-
+        --env-file docker/compose/.env.ci
+        -f docker/compose/compose.yaml
+        -f docker/compose/compose.ci.yaml
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+
+      - name: Select the Sund image
+        if: matrix.sund == 'latest'
+        run: echo "SUND_IMAGE=ghcr.io/mevoc/sund:latest" >> "$GITHUB_ENV"
+
+      - name: Bring the stack up
+        # Both relays: `sund` behind Caddy (profile B, WebPKI mode) and
+        # `sund-pinned` terminating its own TLS (profile A, pinned mode). The
+        # suite runs every assertion against both, because the trust mode is
+        # supposed to be orthogonal to the API and that claim is worth testing.
+        run: docker compose $COMPOSE up -d --wait --wait-timeout 180
+
+      - name: Make the WebPKI leg reachable and verifiable
+        # Both of these are done to the *environment*, never to the client. The
+        # pinning contract's WebPKI mode is "the platform's default TLS client
+        # with no options changed" (§8.2), so a test that needed the client to
+        # relax something would be testing a client nobody ships:
+        #   - the hostname has to resolve, which in production is DNS;
+        #   - the CI certificate authority has to be trusted, which in
+        #     production is a public CA. SSL_CERT_FILE is read by the platform
+        #     trust store the client already asks.
+        run: |
+          set -euo pipefail
+          sudo bash -c 'echo "127.0.0.1 beacon.test ntfy.test" >> /etc/hosts'
+          docker compose $COMPOSE cp \
+            caddy:/data/caddy/pki/authorities/local/root.crt ci-root.crt
+          echo "SSL_CERT_FILE=$PWD/ci-root.crt" >> "$GITHUB_ENV"
+
+      - name: Provision a family on each relay
+        # `sund admin account create --json` is the operator's own path, so the
+        # fixture every device bootstraps from is the real one. The TTL is
+        # generous only so a slow runner cannot expire the token mid-suite.
+        run: |
+          set -euo pipefail
+          fingerprint=$(docker compose $COMPOSE exec -T sund-pinned \
+            /sund cert fingerprint --tls-dir /data/certs | tr -d '\r\n')
+          test -n "$fingerprint"
+          {
+            echo "SUND_PINNED_ADDRESS=sund://127.0.0.1:5871#$fingerprint"
+            echo "SUND_WEBPKI_ADDRESS=sund+webpki://beacon.test"
+            echo "SUND_PINNED_INVITATION=$(docker compose $COMPOSE exec -T sund-pinned \
+              /sund admin account create --json --ttl 30m | jq -r .invitation_token)"
+            echo "SUND_WEBPKI_INVITATION=$(docker compose $COMPOSE exec -T sund \
+              /sund admin account create --json --ttl 30m | jq -r .invitation_token)"
+          } >> "$GITHUB_ENV"
+
+      - name: Contract suite
+        working-directory: core
+        env:
+          # Without this a misconfigured job would skip every leg and report
+          # green. The suite refuses to pass having asserted nothing.
+          SUND_CONTRACT_REQUIRED: "1"
+        run: cargo test -p contract-tests -- --test-threads=1
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          docker compose $COMPOSE ps
+          docker compose $COMPOSE logs --no-color
+
+      - name: Tear down
+        if: always()
+        run: docker compose $COMPOSE down -v
 
   topology:
     name: Topology (Sund ${{ matrix.sund }})
