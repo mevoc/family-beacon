@@ -196,8 +196,8 @@ What survives unchanged
 
 The whole of `beacon-protocol`: envelope, every v1 message type, the consent
 state machine, the ledger rule, the test vectors. The session primitive
-(open decision #1 in the protocol doc) is shared — Try mode changes what carries
-the ciphertext, never what is inside it. The E2EE stance holds without bending:
+(vodozemac's double ratchet, CLAUDE.md decision #6) is shared — Try mode changes
+what carries the ciphertext, never what is inside it. The E2EE stance holds without bending:
 ntfy is *also* a blind relay here, seeing exactly what Sund sees minus
 unlinkability.
 

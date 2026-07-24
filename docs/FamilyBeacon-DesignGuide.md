@@ -667,10 +667,12 @@ question of decision #2 is answered.
   in a browser. Scope to be decided.
 
 Shared client logic is split into reusable libraries (sund-client generic,
-beacon-protocol FB-specific); the implementation-strategy decision (Kotlin
-Multiplatform vs. Rust core vs. per-platform native) is open — see the protocol
-doc's open items and CLAUDE.md decision #6. This guide is about the product/UX and
-stays above that choice.
+beacon-protocol FB-specific), both Rust crates behind UniFFI bindings as of
+CLAUDE.md decision #6. The app layer above them — everything this guide is
+about — stays native per platform. One consequence worth knowing while designing
+flows: consent state, the ledger and the roster live in the core, so a screen
+that wants to show or change them is reading and driving shared logic, not
+platform state.
 
 ---
 
