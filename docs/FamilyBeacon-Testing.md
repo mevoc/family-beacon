@@ -1,6 +1,7 @@
 Family Beacon — Testing and CI strategy
 
-Status: v0.1 (Draft)
+Status: v0.2 (Draft) — the deployment-topology job is implemented; tiers 1–3
+await `core/`
 
 How Family Beacon is tested, and specifically how it is tested *together with*
 Sund — which lives in another repo (`../sund`), ships as a container image, and
@@ -39,10 +40,16 @@ Worth knowing before designing anything, because it removes most of the work:
   `sund://host:port#fingerprint` address — a ready-made profile A conformance
   target.
 
-One prerequisite to clear: the GHCR package is private while the Sund repo is
-(noted in `sund/compose.yaml`). Family Beacon's CI therefore needs either a
-`docker login ghcr.io` with a read-packages token, or the package made public.
-Decide this before writing the workflow — it is the only hard dependency.
+The one prerequisite this strategy used to carry — a private GHCR package — is
+**cleared (July 2026)**: the Sund repo went public and the package followed, so
+`ghcr.io/mevoc/sund` pulls anonymously. No `docker login`, no read token, no
+secret in this repo. Verified against the registry's tag list rather than
+assumed.
+
+One wrinkle survives it. Sund's CI cancels superseded runs on the same ref
+(`concurrency: cancel-in-progress`), so a commit whose run was cancelled has no
+`sha-` tag at all — not every Sund commit is pinnable. Check the tag exists
+before bumping the pin.
 
 ---
 
@@ -150,7 +157,9 @@ already works against the distroless image:
           test: ["CMD", "/sund", "health"]
 
 Pin by commit SHA on pull requests, so a red build means *your* change broke,
-not that Sund moved under you.
+not that Sund moved under you. The pin lives in one place,
+`docker/compose/.env.ci` (`SUND_IMAGE=`); the canary overrides it with `:latest`
+from the shell environment, which takes precedence over an `--env-file`.
 
 2. GitHub Actions `services:` — avoid for this image
 
@@ -186,12 +195,31 @@ what tells you Sund has broken its first consumer *before* you upgrade, rather
 than a week later. It is the cheapest cross-repo insurance available and it
 costs one nightly workflow.
 
-Reference workflow
+Implemented in `.github/workflows/ci.yml` as a matrix variant rather than a
+second workflow: scheduled and manual runs add a `latest` leg alongside the
+pinned one, with `continue-on-error`. One copy of the steps, and a canary
+failure is legible next to a passing pinned run.
+
+What CI runs today
+
+`.github/workflows/ci.yml` exists and covers the deployment topology below —
+the only part of this strategy that has anything to execute, since the Rust
+core is not scaffolded yet. Tiers 1–3 get their own jobs above it when `core/`
+lands.
+
+The invocation is exact and all three arguments are load-bearing:
+
+    docker compose --env-file docker/compose/.env.ci \
+      -f docker/compose/compose.yaml \
+      -f docker/compose/compose.ci.yaml up -d --wait
+
+`--wait` is doing real work: it blocks until every service reports healthy,
+which is what makes Sund's `health` subcommand pay off. The `--env-file` is
+doing more than it looks like — see the topology section below.
+
+Reference shape for the tiers that do not exist yet
 
 Adopt when there is code to build; the shape is stable, the build steps are not:
-
-    name: CI
-    on: [push, pull_request]
 
     jobs:
       unit:
@@ -199,29 +227,26 @@ Adopt when there is code to build; the shape is stable, the build steps are not:
         steps:
           - uses: actions/checkout@v7
           # in-memory transport; no services needed
-          - run: ./gradlew :beacon-protocol:test :sund-client:test
+          - run: cargo test -p beacon-protocol -p sund-client
 
       contract-and-system:
         runs-on: ubuntu-latest
         steps:
           - uses: actions/checkout@v7
-          - uses: docker/login-action@v4      # while the GHCR package is private
-            with:
-              registry: ghcr.io
-              username: ${{ github.actor }}
-              password: ${{ secrets.GHCR_READ_TOKEN }}
+          # no registry login: ghcr.io/mevoc/sund is public
           - name: Start Sund
-            run: docker compose -f docker/compose/compose.ci.yaml up -d --wait
+            run: docker compose $COMPOSE up -d --wait
           - name: Provision a family
             run: |
-              docker compose -f docker/compose/compose.ci.yaml exec -T sund \
+              docker compose $COMPOSE exec -T sund \
                 /sund admin account create --json > account.json
-          - run: ./gradlew :contract-tests:test :system-tests:test
+          - run: cargo test -p contract-tests -p system-tests
           - if: failure()
-            run: docker compose -f docker/compose/compose.ci.yaml logs
+            run: docker compose $COMPOSE logs
 
-`--wait` is doing real work in that step: it blocks until every service reports
-healthy, which is what makes Sund's `health` subcommand pay off.
+The provisioning step is not hypothetical — the topology job already runs it,
+so the fixture every later tier bootstraps from is under test before there is a
+tier to use it.
 
 ---
 
@@ -241,10 +266,28 @@ that the `ntfy` network alias resolves inside the compose network. That alias is
 the least obvious line in `docker/compose/compose.yaml` and exactly the kind of
 thing that breaks silently.
 
-`docker/compose/compose.ci.yaml` handles this by overriding one variable to put
-Caddy on its internal CA (`tls internal`) instead of Let's Encrypt, so the *real*
-Caddyfile is exercised rather than a CI-only copy that would drift from it. See
-that file's header for how to run it and how to trust the local CA.
+`docker/compose/compose.ci.yaml` handles this by putting Caddy on its internal
+CA (`tls internal`) instead of Let's Encrypt, so the *real* Caddyfile is
+exercised rather than a CI-only copy that would drift from it. See that file's
+header for how to run it and how to trust the local CA.
+
+The settings come from `docker/compose/.env.ci`, not from `environment:`
+overrides, and that distinction is the one genuine trap in this stack: compose
+interpolates each file when it *loads* it, before merging, so an override block
+sets the container's environment far too late to satisfy `compose.yaml`'s own
+`${BEACON_DOMAIN:?…}`. The case that actually bites is the network alias,
+`${NTFY_DOMAIN:-ntfy.invalid}` — with nothing in the environment it resolves to
+`ntfy.invalid` while Caddy serves `ntfy.test`, so the alias assertion passes
+over a stack where the alias points nowhere. An env-file fixes both, and keeps
+one copy of the hostnames.
+
+Concretely, the job asserts: TLS and routing for the Sund vhost verified
+against the exported CI root; `GET /v1/devices` arriving at Sund unrewritten
+(401, where a 404 would mean Caddy rewrote the signed path); the same request
+straight to the published relay port agreeing, so a failure localises to one
+layer; a 2 MiB body refused at the edge; both hostnames routed; the ntfy alias
+resolving from inside the compose network; and `sund admin account create
+--json` returning a usable family.
 
 ---
 
@@ -289,8 +332,9 @@ Open items
    nothing but a Rust toolchain and the Sund image. This is the portability the
    item was asking for — Sund's CI checks out this repo at a pinned ref and runs
    it, per Consumer contract tests.
-3. **GHCR package visibility** (public, or a read token in this repo's secrets).
-   Blocking for any CI that pulls the image.
+3. ~~GHCR package visibility.~~ **Resolved (July 2026): the package is public**
+   and pulls anonymously — the Sund repo went public and the package followed.
+   Nothing to configure in this repo. See What Sund already provides.
 4. ~~`docker/compose/.env.example` does not exist.~~ Added (July 2026).
 5. **Emulator matrix breadth** — how many API levels are worth the nightly
    minutes. iOS is out of scope for now under the Android-first sequencing

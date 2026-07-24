@@ -21,6 +21,8 @@ node_modules/
 .env
 .env.*
 !.env.example
+# CI topology-test settings: hostnames and a pinned image tag, no secrets.
+!.env.ci
 
 # OS
 .DS_Store

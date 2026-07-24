@@ -1,0 +1,178 @@
+name: CI
+
+# Family Beacon has no client code yet (the Rust core of decision #6 is not
+# scaffolded), so this workflow covers the one thing in the repo that is
+# executable today: the deployment topology of profile B. That is tier 4's
+# deployment half — docs/FamilyBeacon-Testing.md. Tiers 1–3 (unit, contract,
+# system) get their own jobs above this one when core/ exists; the shape of
+# those is in the same document.
+#
+# Everything here runs against a real ghcr.io/mevoc/sund image, pulled
+# anonymously (the package is public).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Nightly canary against Sund main — see the matrix below.
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  topology:
+    name: Topology (Sund ${{ matrix.sund }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Per-commit runs use the commit pinned in .env.ci. Scheduled and manual
+        # runs additionally run against Sund's moving :latest — the canary. It
+        # is allowed to fail loudly without blocking anyone; its job is to tell
+        # us Sund broke its first consumer before we bump the pin, rather than a
+        # week later.
+        sund: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && fromJSON('["pinned", "latest"]') || fromJSON('["pinned"]') }}
+
+    continue-on-error: ${{ matrix.sund == 'latest' }}
+
+    env:
+      # Both -f files and the --env-file are required; see compose.ci.yaml's
+      # header for why the environment cannot come from an override block.
+      COMPOSE: >-
+        --env-file docker/compose/.env.ci
+        -f docker/compose/compose.yaml
+        -f docker/compose/compose.ci.yaml
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select the Sund image
+        # Unset for the pinned variant, so .env.ci's pin wins. A shell variable
+        # takes precedence over --env-file, which is how the canary floats.
+        if: matrix.sund == 'latest'
+        run: echo "SUND_IMAGE=ghcr.io/mevoc/sund:latest" >> "$GITHUB_ENV"
+
+      - name: Validate the merged compose files
+        # Fails fast and legibly on interpolation errors, which is the failure
+        # mode this stack is most prone to.
+        run: docker compose $COMPOSE config -q
+
+      - name: Bring the stack up
+        # --wait blocks until every service reports healthy, which is what makes
+        # Sund's self-probing `health` subcommand pay off against a distroless
+        # image with no shell.
+        run: docker compose $COMPOSE up -d --wait --wait-timeout 180
+
+      - name: Report the Sund build under test
+        run: |
+          docker compose $COMPOSE images sund
+          curl -fsS http://127.0.0.1:5870/health
+
+      - name: Trust Caddy's ephemeral CI certificate authority
+        run: |
+          docker compose $COMPOSE cp \
+            caddy:/data/caddy/pki/authorities/local/root.crt ci-root.crt
+
+      - name: Assert the proxy topology
+        run: |
+          set -euo pipefail
+
+          CURL=(curl -sS --max-time 20 --cacert ci-root.crt
+                --resolve beacon.test:443:127.0.0.1
+                --resolve ntfy.test:443:127.0.0.1)
+
+          check() {  # check <expected-status> <description> <curl args...>
+            local want=$1 what=$2; shift 2
+            local got
+            got=$("${CURL[@]}" -o /dev/null -w '%{http_code}' "$@" || true)
+            if [ "$got" != "$want" ]; then
+              echo "FAIL  $what — expected HTTP $want, got $got"
+              exit 1
+            fi
+            printf 'ok    %s (HTTP %s)\n' "$what" "$got"
+          }
+
+          # TLS and routing for the Sund vhost, verified against the CI root
+          # rather than with --insecure: this asserts trust, not just reachability.
+          check 200 "Sund /health through Caddy, chaining to the CI root" \
+            https://beacon.test/health
+
+          # Path passthrough. A device signs METHOD \n PATH \n TIMESTAMP \n
+          # NONCE \n hex(sha256(BODY)), so any prefix stripping or rewriting in
+          # front of Sund invalidates every signature. /v1/devices exists and is
+          # signature-gated, so an unauthenticated request must reach Sund and be
+          # refused with 401. A 404 means Caddy rewrote the path — the exact
+          # failure the Caddyfile's `handle_path` warning is about.
+          check 401 "GET /v1/devices reaches Sund unrewritten (404 = rewritten)" \
+            https://beacon.test/v1/devices
+
+          # Same request straight to the relay, bypassing the proxy. Identical
+          # status means the two layers agree; a difference localises the fault
+          # to one of them, which is what publishing 5870 in compose.ci.yaml is for.
+          direct=$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' \
+            http://127.0.0.1:5870/v1/devices || true)
+          if [ "$direct" != "401" ]; then
+            echo "FAIL  GET /v1/devices direct to the relay — expected HTTP 401, got $direct"
+            exit 1
+          fi
+          printf 'ok    same path direct to the relay agrees (HTTP %s)\n' "$direct"
+
+          # The edge body cap (1 MiB, matching Sund's own) refuses oversized
+          # bodies before they are streamed to the relay.
+          head -c 2097152 /dev/zero | tr '\0' 'a' > big.bin
+          check 413 "2 MiB body refused at the edge by request_body max_size" \
+            -X POST --data-binary @big.bin https://beacon.test/v1/devices/register
+
+          # The ntfy vhost: the second hostname Caddy has to route.
+          check 200 "ntfy /v1/health through Caddy" https://ntfy.test/v1/health
+          "${CURL[@]}" https://ntfy.test/v1/health | grep -q '"healthy":true'
+          printf 'ok    ntfy reports healthy through the proxy\n'
+
+      - name: Assert the ntfy alias resolves inside the compose network
+        # The least obvious line in compose.yaml. Sund POSTs wake-ups to the
+        # public endpoint URL the device's distributor minted, so that public
+        # hostname has to resolve from inside the network — otherwise it depends
+        # on the home router hairpinning NAT, which most do not. Asserted from a
+        # throwaway container joined to the same network, because the sund image
+        # is distroless and has no shell or curl to run this from; the alias is
+        # network-scoped, so every member resolves it identically.
+        #
+        # --insecure is deliberate and narrow: what is under test here is DNS
+        # and routing, not trust. Trust is asserted in the step above.
+        run: |
+          set -euo pipefail
+          net="$(docker network ls \
+            --filter label=com.docker.compose.project=family-beacon \
+            --format '{{.Name}}' | head -1)"
+          test -n "$net"
+          docker run --rm --network "$net" curlimages/curl:latest \
+            -sS --insecure --max-time 20 https://ntfy.test/v1/health \
+            | tee /dev/stderr | grep -q '"healthy":true'
+          echo "ok    ntfy.test resolves to Caddy inside the compose network"
+
+      - name: Provision a family (the tier-2 fixture)
+        # Non-interactive provisioning is what every later suite bootstraps from,
+        # so exercise it here while there is no suite yet. `exec` works against
+        # the distroless image because it runs the binary directly.
+        run: |
+          set -euo pipefail
+          docker compose $COMPOSE exec -T sund \
+            /sund admin account create --json > account.json
+          jq -e '.account_id and .invitation_token' account.json > /dev/null
+          echo "ok    sund admin account create --json returned a usable family"
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          docker compose $COMPOSE ps
+          docker compose $COMPOSE logs --no-color
+
+      - name: Tear down
+        if: always()
+        run: docker compose $COMPOSE down -v

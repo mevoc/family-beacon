@@ -7,6 +7,7 @@
 #   - the services come up healthy and in the right order
 #   - Caddy routes both hostnames and passes request paths through UNREWRITTEN
 #     (a correctness requirement — devices sign the path; see ../caddy/Caddyfile)
+#   - the request-body cap applies at the edge
 #   - the ntfy network alias resolves inside the compose network, which is the
 #     least obvious line in compose.yaml and the likeliest to break silently
 #
@@ -17,27 +18,32 @@
 # What it does NOT test: ACME certificate issuance, real DNS, and internet
 # reachability. Those need a real domain and are out of CI's reach by nature.
 #
-# Usage:
+# Usage — note both -f files and the --env-file, all three are required:
 #
-#   docker compose -f compose.yaml -f compose.ci.yaml up -d --wait
+#   docker compose --env-file docker/compose/.env.ci \
+#     -f docker/compose/compose.yaml \
+#     -f docker/compose/compose.ci.yaml up -d --wait
 #
 # `--wait` blocks until every service reports healthy, which is what makes
 # Sund's self-probing `health` subcommand pay off.
 #
+# The hostnames, the internal CA and the pinned Sund image all come from
+# .env.ci, not from overrides here: compose interpolates each file before
+# merging, so an `environment:` block in this file would be too late to satisfy
+# compose.yaml's own ${BEACON_DOMAIN:?…} and — the one that actually bites —
+# the ${NTFY_DOMAIN} in the network alias. See that file's header.
+#
 # Then, to talk to the stack over TLS, export Caddy's local CA root:
 #
-#   docker compose -f compose.yaml -f compose.ci.yaml cp \
+#   docker compose --env-file docker/compose/.env.ci -f … cp \
 #     caddy:/data/caddy/pki/authorities/local/root.crt ./ci-root.crt
 #   curl --cacert ./ci-root.crt --resolve beacon.test:443:127.0.0.1 \
 #     https://beacon.test/health
 #
-# Pin SUND_IMAGE to a commit on pull requests so a red build means your change
-# broke, not that Sund moved underneath you:
-#
-#   SUND_IMAGE=ghcr.io/mevoc/sund:sha-<full-sha> docker compose -f … up -d --wait
-#
-# The nightly canary omits the pin (or uses :latest) on purpose — that job
-# exists to find out that Sund broke its first consumer.
+# .env.ci pins SUND_IMAGE to a commit, so a red build means your change broke,
+# not that Sund moved. The scheduled canary overrides it with :latest from the
+# shell environment on purpose — that job exists to find out that Sund broke
+# its first consumer.
 
 services:
   sund:
@@ -48,23 +54,7 @@ services:
     ports:
       - "127.0.0.1:5870:5870"
 
-  ntfy:
-    environment:
-      # Must match how Caddy is reached in CI, since this is the base URL ntfy
-      # hands out as a UnifiedPush endpoint.
-      NTFY_BASE_URL: "https://ntfy.test"
-
   caddy:
-    environment:
-      # The whole point of this override: Caddy's internal CA instead of ACME.
-      # ../caddy/Caddyfile carries a {$CADDY_TLS} placeholder that is empty in
-      # production and becomes this directive here.
-      CADDY_TLS: "tls internal"
-      BEACON_DOMAIN: "beacon.test"
-      NTFY_DOMAIN: "ntfy.test"
-      # Unused with `tls internal`, but the Caddyfile's global block still
-      # references it, so give it something valid.
-      ACME_EMAIL: "ci@beacon.test"
     # Caddy must resolve its own hostnames for the ntfy leg; the alias in
     # compose.yaml handles ntfy.test, and this covers anything resolving
     # beacon.test inside the network.
@@ -72,10 +62,10 @@ services:
       - "beacon.test:127.0.0.1"
     healthcheck:
       # Prove the proxy is actually serving TLS for the Sund vhost, not merely
-      # that the process started. --insecure is fine here and only here: the
-      # certificate is from Caddy's own ephemeral CI CA, and the assertion is
-      # reachability and routing, not trust. Tests that verify trust use the
-      # exported root above.
+      # that the process started. --no-check-certificate is fine here and only
+      # here: the certificate is from Caddy's own ephemeral CI CA, and the
+      # assertion is reachability and routing, not trust. Tests that verify
+      # trust use the exported root above.
       test:
         - "CMD"
         - "wget"
