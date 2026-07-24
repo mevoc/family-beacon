@@ -228,8 +228,15 @@ police is honesty about residual metadata (Sund's threat model) — see #5.
    - Channels are established automatically on join, consent is not — the channel
      is the pipe and the valve ships closed, so a new member can raise an SOS
      before anyone has tapped Accept.
-   Open items in the spec: eviction conflicts (blocking before v1 ships to
-   families, not before implementation), family size bound, vouch rate limiting.
+   - **Abuse is bounded by two constants, both build-time:** 20 active devices
+     per family (enforced at admission, never by degrading sync), and 5 membership
+     events per device per rolling day. The second is a *churn* budget — it counts
+     removals as well as vouches, because the attack is the two in a loop — and it
+     is enforced at the verifier, since the introducer is the attacker. Over
+     budget holds an admission for human approval; an over-budget removal still
+     applies immediately, because removal is fail-safe and admission is not.
+   Remaining open item in the spec: the founding device self-vouches, so whether a
+   second device should co-sign the founding record is undecided. Not blocking.
 10. **Client build order — CLOSED (July 2026): Android first**, to a complete v1
    safety core, before iOS or web start. Rationale in ARCHITECTURE.md (Client
    platforms and build order): Android is the only platform where the whole stack

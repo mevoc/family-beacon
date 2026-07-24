@@ -275,6 +275,66 @@ Verifying a vouch
   every other member's roster, so every vouch is verified directly. There is no
   web of trust to walk.
 
+Churn budget — rate limiting membership events
+
+The size cap bounds how many devices exist at once; it does nothing about
+*churn*. A hostile member can introduce and remove devices indefinitely, and each
+cycle costs every other member a round of channel setup, key-bundle fetches,
+roster syncs, ledger entries and notifications — and costs them *quota*, which
+Sund charges to the recipient (Sund-Status → Trust boundary). Tombstones do not
+count toward the size cap, so the cap alone leaves this unbounded.
+
+**Decided (July 2026): a per-introducer budget on membership events, enforced
+locally by every verifier.**
+
+    MAX_MEMBERSHIP_EVENTS_PER_DEVICE_PER_DAY = 5    (build-time constant)
+
+Four things about this design are load-bearing, and three of them are not the
+obvious choice:
+
+1. **Enforced at the verifier, never at the introducer.** The introducer is the
+   attacker; a budget it applies to itself is decoration. Each device evaluates
+   every incoming vouch against its own local count of that introducer's recent
+   activity. No coordination, no shared counter, and it therefore works
+   identically in Try mode.
+
+2. **The window is wall-clock, not epoch.** Per-epoch was the obvious unit and is
+   exactly backwards: every removal bumps the epoch, so an introduce/remove
+   attacker resets their own budget with each cycle — the attack would pay for
+   its own allowance. The window is a rolling 24 hours, evaluated against the
+   event's signed timestamp, clamped against future-dating for clock skew (the
+   same clamp the presence spec applies to `sent`).
+
+3. **The budget counts removals too, but never refuses one.** Both
+   `roster_introduce` and `roster_remove` signed by a device consume its budget,
+   because churn is the two of them in a loop and budgeting only admissions would
+   miss half the cycle. But an over-budget *removal is still applied
+   immediately* — it only counts. The asymmetry is the same one the whole
+   document runs on: removal takes capability away and is fail-safe, admission
+   grants capability and is fail-dangerous. A stolen-phone removal must never be
+   delayed by a rate limiter, whatever else that device has been doing. Not
+   counted at all: a device removing itself (leaving is not churn inflicted on
+   the family) and the founder's self-vouch.
+
+4. **Over budget means held for approval, not rejected.** An exceeded budget
+   quarantines the vouch at the verifier: it is ledgered, surfaced with the
+   count that triggered it ("Dad's phone has added or removed 6 devices today —
+   admit Emma's tablet?"), and admitted only if the verifier's own user says so.
+   A hard reject would make an honest family setting up six devices in an
+   afternoon look broken, and would hand an attacker a way to *deny* admission by
+   burning a victim's budget on their behalf — which quarantine does not, since
+   the human can always approve.
+
+Consequence for the SOS argument, stated because it is a real exception to the
+"channels auto-establish, consent does not" rule above: a quarantined device is
+not yet reachable by the members who quarantined it, so it cannot raise an SOS
+to them until someone approves. That is the correct trade only because the budget
+sits well above ordinary family behaviour — five membership events per device per
+day is a setup-day number, not a Tuesday number — and because the joiner is never
+fully isolated: the introducer's own channel exists from the QR ceremony
+regardless. If the constant ever needs raising to keep honest families out of
+quarantine, raise it; do not weaken the quarantine into an auto-admit.
+
 ---
 
 Removal
@@ -435,9 +495,12 @@ entries — none of these is telemetry, and none may be aggregated away:
 - a device joined, and who vouched for it
 - a device was removed, by whom, and for which stated reason
 - a vouch was rejected, and why (removed introducer, existing tombstone,
-  sender mismatch)
+  sender mismatch, size cap reached)
+- a vouch was held for approval over the churn budget, with the count that
+  triggered it — and, separately, its later approval or denial and by whom
 - a device appeared on the server that no one vouched for (Sund mode)
 - an epoch bump, and in Try mode the members believed stranded by it
+- the family split by mutual eviction, naming both sides
 - a display name, member grouping or role label changed
 
 The rule of thumb this follows: **if it changes who can reach you, it is a ledger
@@ -452,12 +515,11 @@ Open items
    auto-resolved.** See Reconciliation → Split families.
 2. ~~Family size bound.~~ **Decided July 2026: 20 devices, a build-time
    constant, enforced at admission.** See The model → Family size.
-3. **Vouch rate limiting.** A hostile member can introduce devices up to the
-   size cap, each admitted at default-deny but still consuming channels, quota
-   (charged to the *recipient*, per Sund's threat model) and attention. The
-   20-device cap bounds the damage but does not address the churn case — repeated
-   introduce/remove cycles are unbounded. A cap per introducer per epoch is the
-   likely answer. Open, and the only remaining item here that touches security.
+3. ~~Vouch rate limiting.~~ **Decided July 2026: a per-introducer churn budget,
+   enforced at the verifier, over-budget admissions held for approval.** See
+   Admission → Churn budget. Note that the per-epoch form suggested here
+   originally was wrong — removals bump the epoch, so the attack would have reset
+   its own allowance.
 4. ~~Member grouping across devices.~~ **Decided July 2026: labelling only, no
    verification.** See The model → Consequence for grouping.
 5. **Founding-device special case.** The founder self-vouches, so a family's
