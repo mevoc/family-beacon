@@ -12,6 +12,8 @@
 mod enrollment;
 #[path = "contract/membership.rs"]
 mod membership;
+#[path = "contract/outbox.rs"]
+mod outbox;
 #[path = "contract/pinning.rs"]
 mod pinning;
 #[path = "contract/port.rs"]

@@ -8,15 +8,14 @@ coordinated by a small server the family runs themselves.
 `beacon-protocol` (envelope codec, message registry, consent state machine,
 ledger vocabulary), `sund-client` (the signed-request form, server addresses and
 both transport-trust modes, the HTTP client, the two-plane API, the transport
-port with its Sund implementation and an in-memory one, and the session layer —
+port with its Sund implementation and an in-memory one, the session layer —
 protocol identity key, key bundles, canonical JSON, the vodozemac ratchet and its
-persistence), `beacon-roster` (the membership state machine: vouch-based
+persistence — and the offline outbox), `beacon-roster` (the membership state machine: vouch-based
 admission, removal and tombstones, the churn budget, reconciliation and split
 detection) and `contract-tests` (tier 2, driving the real libraries against a
 real relay in both modes — including a leg where devices actually found a family,
 join it, and are introduced to each other by a relayed sealed address). Tiers 1
-and 2 run in CI. Not yet written: the offline outbox, the UniFFI bindings, and
-every app. `ARCHITECTURE.md` (the
+and 2 run in CI. Not yet written: the UniFFI bindings, and every app. `ARCHITECTURE.md` (the
 founding vision doc) defines the shape; `core/README.md` maps what exists
 against what does not.
 Successor to `../family-beacon-android`, the original SMS-based peer-to-peer

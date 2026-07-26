@@ -317,6 +317,37 @@ Versioning and compatibility
 
 ---
 
+Offline behaviour — what the outbox does with each type
+
+A device that cannot reach the server queues what it was going to send. What it
+does with that queue when the network returns is per-type, because the types
+differ in kind: some describe a moment, some describe state, some record an
+event. Settled July 2026 with the outbox (`core/sund-client`'s `outbox` module);
+the mechanism is generic and this table is the policy the app layer applies to it.
+
+| Type | Offline treatment |
+| --- | --- |
+| location | **Expires and supersedes.** A stale position is worse than none, so it is dropped past its TTL rather than delivered late, and a newer one replaces the one queued behind it. |
+| battery | **Expires and supersedes.** Same reasoning; a threshold crossing from an hour ago is not news. |
+| geofence_event | **Expires**, does not supersede. Two crossings are two events, but a crossing nobody heard about for an hour is history rather than a notification. |
+| sos, sos_clear | **Durable.** Retried until they land. `sos_clear` especially: an alarm that was stood down and whose stand-down was dropped is the worst possible state. |
+| attention | **Expires.** "Contact me urgently" that arrives an hour later is noise, and the protocol already gives it a short TTL for the same reason. |
+| consent_update, config_update | **Durable.** A revocation that does not arrive leaves a peer believing it may still emit. |
+| roster_introduce, roster_remove, roster_sync | **Durable.** Membership must converge; a dropped tombstone re-admits a removed device on the next reconciliation. |
+| channel_offer | **Durable.** A dropped offer means a join silently never completes. |
+| receipt | **Expires.** A receipt is about a message the sender has long since escalated past. |
+
+Two rules that fall out of the table and are normative:
+
+- **Expiry is a drop, not a delay.** An expired message is never sent late; it is
+  dropped and ledgered, and the resulting `seq` gap is exactly the "loss or
+  expiry" the envelope rules already tell receivers to surface as staleness.
+- **Urgency overtakes.** A high-priority message drains ahead of a backlog on the
+  same channel. An SOS must not wait behind forty queued positions, and arriving
+  out of `seq` order is not a gap — receivers already tolerate reordering.
+
+---
+
 Open items
 
 1. ~~Session primitive.~~ **Decided July 2026: a double ratchet (vodozemac),

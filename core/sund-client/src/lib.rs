@@ -14,6 +14,7 @@
 //!   ────────────────────────────────────────────────────────────────────
 //!   identity · bundle       who a device is · how peers learn its keys
 //!   session · session_store the double ratchet, and what persists of it
+//!   outbox                  what to do with a message the network cannot take
 //!   canonical               the encoding every signature is computed over
 //!   ────────────────────────────────────────────────────────────────────
 //!   transport               the port …………………………………………… transport
@@ -52,6 +53,7 @@ pub mod client;
 pub mod http;
 pub mod identity;
 pub mod memory;
+pub mod outbox;
 pub mod rfc3339;
 pub mod session;
 pub mod session_store;

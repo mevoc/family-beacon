@@ -13,6 +13,8 @@ biometrics and local storage stay native per platform.
     ─────────────────────────────────────────────────────────────────
     session crypto            identity · bundle · session · session_store
     ─────────────────────────────────────────────────────────────────
+    offline outbox            expire · supersede · retry · re-seal
+    ─────────────────────────────────────────────────────────────────
     transport port            send / subscribe / ack / channel lifecycle
     ─────────────────────────────────────────────────────────────────
     sund-client  │  ntfy-client (Try mode, deferred)
@@ -33,7 +35,7 @@ one, it is in the wrong crate.
 | Crate | Contents |
 | --- | --- |
 | `beacon-protocol` | Envelope codec and the v1 message-type registry, the consent state machine, the transparency ledger's vocabulary, and the receive path that binds an outcome to its ledger entry. |
-| `sund-client` | The canonical signed-request form (`sigauth`), server addresses and both transport-trust modes (`address`, `agent`), the two-plane API client (`client`), the transport port and its Sund implementation (`transport`, `sund_transport`), an in-memory implementation of the port for tests, and the session layer: the protocol identity key and its signing domains (`identity`), canonical JSON (`canonical`), the grant-only key bundle (`bundle`), the vodozemac ratchet (`session`) and its persistence (`session_store`). |
+| `sund-client` | The canonical signed-request form (`sigauth`), server addresses and both transport-trust modes (`address`, `agent`), the two-plane API client (`client`), the transport port and its Sund implementation (`transport`, `sund_transport`), an in-memory implementation of the port for tests, the offline outbox (`outbox`), and the session layer: the protocol identity key and its signing domains (`identity`), canonical JSON (`canonical`), the grant-only key bundle (`bundle`), the vodozemac ratchet (`session`) and its persistence (`session_store`). |
 | `beacon-roster` | The membership state machine of `docs/FamilyBeacon-Roster.md`: device records and tombstones, vouch-based admission, removal, the churn budget, `roster_sync` merging, server-list reconciliation, mutual-eviction detection, and the initiation-address relay that grant-only bundles require. Depends on `beacon-protocol` for the wire types and on `sund-client` for identity keys and canonical JSON — no HTTP client comes with it. |
 | `contract-tests` | Tier 2 of `docs/FamilyBeacon-Testing.md`: the shipping libraries against a real relay in both trust modes. Needs a server; see below. |
 
@@ -57,7 +59,7 @@ Design points worth knowing before adding to any of them:
   half we own is retired and recreated by us; the half the peer owns changes
   when they tell us, and each new peer queue binds a fresh sender key.
 
-Two more, added with the session layer:
+Three more, added with the session layer and the outbox:
 
 - **A device holds two Ed25519 keys and the app layer must store both seeds.**
   `sigauth::DeviceKey` signs HTTP requests; `identity::IdentityKey` is the
@@ -69,11 +71,14 @@ Two more, added with the session layer:
   closed enum. Floats are refused rather than encoded, because a float has no
   canonical form and a signature over an ambiguous encoding is a forgery waiting
   to happen.
+- **The outbox queues plaintext and seals at drain.** Sealing at enqueue would
+  bind every queued message to a session that may not survive the outage, and
+  would advance the ratchet for messages that are then dropped for staleness. The
+  cost is that the outbox snapshot holds message bodies in the clear — store it
+  where the platform keeps sensitive state, not in a cache directory.
 
 ## What is not here yet
 
-- **The offline outbox.** Queueing sends while the network is gone, and
-  retrying them, sits above the transport port and is not written.
 - **UniFFI bindings.** Deliberately absent until there is an app-facing API
   worth binding — they cost NDK cross-compilation, xcframework packaging and
   wasm-pack in CI, and none of that is needed for tiers 1–3, which are

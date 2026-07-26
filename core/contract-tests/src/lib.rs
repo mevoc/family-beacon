@@ -51,7 +51,7 @@
 //! would silently break that: the second process would find its token already
 //! consumed.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime};
 use sund_client::address::ServerAddress;
@@ -332,6 +332,49 @@ impl PathRewritingHttp {
             inner,
             from: from.into(),
             to: to.into(),
+        }
+    }
+}
+
+/// An [`HttpClient`] the test can take offline and bring back.
+///
+/// The outbox's whole reason for existing is what happens while the network is
+/// gone, and there is no honest way to assert that against a relay that is always
+/// up. Failing at this seam rather than by stopping the container keeps the test
+/// fast and keeps the failure shaped like the one a phone actually sees: the
+/// server is fine, this device cannot reach it.
+pub struct SwitchableHttp {
+    inner: Arc<dyn HttpClient>,
+    reachable: AtomicBool,
+}
+
+impl SwitchableHttp {
+    /// Wrap a client, initially reachable.
+    #[must_use]
+    pub fn new(inner: Arc<dyn HttpClient>) -> Self {
+        Self {
+            inner,
+            reachable: AtomicBool::new(true),
+        }
+    }
+
+    /// Fail every request from now on.
+    pub fn go_offline(&self) {
+        self.reachable.store(false, Ordering::Relaxed);
+    }
+
+    /// Let requests through again.
+    pub fn come_online(&self) {
+        self.reachable.store(true, Ordering::Relaxed);
+    }
+}
+
+impl HttpClient for SwitchableHttp {
+    fn execute(&self, request: &HttpRequest) -> Result<HttpResponse, HttpError> {
+        if self.reachable.load(Ordering::Relaxed) {
+            self.inner.execute(request)
+        } else {
+            Err(HttpError::Network("the network is gone".to_owned()))
         }
     }
 }

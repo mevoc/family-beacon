@@ -78,8 +78,9 @@ Tier 2 — Contract. Real Sund binary, no app. **Implemented** (July 2026) in
 Drives `sund-client` against a real relay and asserts the things only a real
 server can falsify: enrollment and invitation consumption, the signing scheme,
 queue lifecycle and rotation, revocation taking effect, the size caps, the key
-bundle store behaving as a dead drop rather than a crypto service, and both
-address forms of the pinning contract
+bundle store behaving as a dead drop rather than a crypto service, what a backlog
+queued during a real outage does when the network returns, and both address forms
+of the pinning contract
 (`../../sund/docs/Sund-Pinning-Contract.md`) — `sund://…#fingerprint` against a
 `--tls-dir` server, `sund+webpki://…` against a plain-HTTP server behind a proxy
 with a trusted certificate.
@@ -107,6 +108,13 @@ How it is arranged, and why:
   and over real Sund queues, from one function (`tests/contract/port.rs`). That
   is what stops the port from quietly coming to mean "whatever Sund does", and
   it is where `ntfy-client` joins when Try mode is built.
+- **The network is taken away at the client's own seam.** The outbox leg needs a
+  network that goes, and stopping the container would be slow and would test the
+  wrong failure: a phone's experience is that the server is fine and *this device*
+  cannot reach it. `SwitchableHttp` wraps the shipping `HttpClient` and fails
+  every request on command, so everything either side of that seam stays real. The
+  switch itself is asserted against the relay, because a harness that quietly did
+  nothing would make every assertion behind it vacuous.
 - **The environment is what gets adjusted for WebPKI mode, never the client.**
   The hostname has to resolve (a `/etc/hosts` line in CI; DNS in production) and
   the CI certificate authority has to be trusted (`SSL_CERT_FILE`, which the

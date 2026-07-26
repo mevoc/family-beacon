@@ -278,10 +278,34 @@ Family Beacon should continue working even without network access.
 Clients should:
 
 - Cache configuration locally.
-- Store location updates while offline.
+- Queue outbound messages while offline.
 - Synchronize automatically when connectivity returns.
 
 The goal is graceful degradation rather than failure.
+
+**What "synchronize when connectivity returns" does not mean** (settled July 2026,
+building the outbox in `core/sund-client`'s `outbox` module). The obvious reading
+— keep everything, send it all on reconnect — is wrong for this product, and the
+protocol spec says why in one line about the most common message type: *a stale
+location is worse than none*. Flushing an hour of queued positions on reconnect
+would paint a family's map with a morning that is over, which the design guide
+forbids outright ("never fabricates freshness"). So the queue is not a buffer, it
+is a policy:
+
+- **Messages that describe a moment expire.** Past their expiry they are dropped,
+  not sent, and the drop is ledgered. Reconnecting licences a *fresh* position,
+  never an old one.
+- **Messages that describe state supersede.** A newer location replaces the one
+  queued behind it, so an hour offline drains as one current position rather than
+  sixty historical ones.
+- **Messages that record an event are durable.** An SOS, a tombstone, a consent
+  revocation is retried until it lands, however late — for these, lost is worse
+  than late.
+
+Which category a message type falls into is per-type and listed in
+`docs/FamilyBeacon-Protocol.md` → Offline behaviour. Nothing about this is a
+performance optimisation; it is the same honesty rule the UI runs on, enforced
+one layer lower so the UI is never handed a lie to render.
 
 ---
 
