@@ -11,6 +11,8 @@ biometrics and local storage stay native per platform.
     ─────────────────────────────────────────────────────────────────
     family roster             membership, introductions, revocation policy
     ─────────────────────────────────────────────────────────────────
+    session crypto            identity · bundle · session · session_store
+    ─────────────────────────────────────────────────────────────────
     transport port            send / subscribe / ack / channel lifecycle
     ─────────────────────────────────────────────────────────────────
     sund-client  │  ntfy-client (Try mode, deferred)
@@ -31,7 +33,7 @@ one, it is in the wrong crate.
 | Crate | Contents |
 | --- | --- |
 | `beacon-protocol` | Envelope codec and the v1 message-type registry, the consent state machine, the transparency ledger's vocabulary, and the receive path that binds an outcome to its ledger entry. |
-| `sund-client` | The canonical signed-request form (`sigauth`), server addresses and both transport-trust modes (`address`, `agent`), the two-plane API client (`client`), the transport port and its Sund implementation (`transport`, `sund_transport`), and an in-memory implementation of the port for tests. |
+| `sund-client` | The canonical signed-request form (`sigauth`), server addresses and both transport-trust modes (`address`, `agent`), the two-plane API client (`client`), the transport port and its Sund implementation (`transport`, `sund_transport`), an in-memory implementation of the port for tests, and the session layer: the protocol identity key and its signing domains (`identity`), canonical JSON (`canonical`), the grant-only key bundle (`bundle`), the vodozemac ratchet (`session`) and its persistence (`session_store`). |
 | `contract-tests` | Tier 2 of `docs/FamilyBeacon-Testing.md`: the shipping libraries against a real relay in both trust modes. Needs a server; see below. |
 
 Design points worth knowing before adding to any of them:
@@ -54,12 +56,21 @@ Design points worth knowing before adding to any of them:
   half we own is retired and recreated by us; the half the peer owns changes
   when they tell us, and each new peer queue binds a fresh sender key.
 
+Two more, added with the session layer:
+
+- **A device holds two Ed25519 keys and the app layer must store both seeds.**
+  `sigauth::DeviceKey` signs HTTP requests; `identity::IdentityKey` is the
+  roster's `identity_pk` and signs bundles, vouches and tombstones. Nothing
+  cryptographically binds them — the vouch is the binding, which is the roster's
+  own position on who decides membership.
+- **Everything signed is signed over canonical JSON with a domain prefix.**
+  `family-beacon/<purpose>/v1\0 || canonical_json(payload)`, purposes being a
+  closed enum. Floats are refused rather than encoded, because a float has no
+  canonical form and a signature over an ambiguous encoding is a forgery waiting
+  to happen.
+
 ## What is not here yet
 
-- **Session crypto.** vodozemac, in fallback-key mode (decision #6). The
-  protocol layer above it is deliberately agnostic: it defines the plaintext
-  handed to the session layer and nothing below it. Until it lands, what
-  crosses the transport port is ciphertext only by convention.
 - **The roster state machine.** Specified in `docs/FamilyBeacon-Roster.md`;
   its wire types are already in the registry here, and the management-plane
   calls it needs (device list, invitations, bundles, revocation) are in

@@ -16,6 +16,8 @@ mod pinning;
 mod port;
 #[path = "contract/queues.rs"]
 mod queues;
+#[path = "contract/sessions.rs"]
+mod sessions;
 #[path = "contract/signing.rs"]
 mod signing;
 

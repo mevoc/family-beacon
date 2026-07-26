@@ -11,5 +11,11 @@ repository.workspace = true
 [dependencies]
 sund-client = { path = "../sund-client" }
 
+[dev-dependencies]
+# Only the tests need it, and only the sessions leg: it is what makes that leg
+# drive the *whole* stack — envelope, session, real relay, back to envelope —
+# rather than asserting that ciphertext survives a round trip.
+beacon-protocol = { path = "../beacon-protocol" }
+
 [lints]
 workspace = true

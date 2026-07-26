@@ -76,7 +76,8 @@ Tier 2 — Contract. Real Sund binary, no app. **Implemented** (July 2026) in
 
 Drives `sund-client` against a real relay and asserts the things only a real
 server can falsify: enrollment and invitation consumption, the signing scheme,
-queue lifecycle and rotation, revocation taking effect, the size caps, and both
+queue lifecycle and rotation, revocation taking effect, the size caps, the key
+bundle store behaving as a dead drop rather than a crypto service, and both
 address forms of the pinning contract
 (`../../sund/docs/Sund-Pinning-Contract.md`) — `sund://…#fingerprint` against a
 `--tls-dir` server, `sund+webpki://…` against a plain-HTTP server behind a proxy
@@ -257,10 +258,17 @@ What CI runs today
   pinned/canary matrix as `topology`.
 - **`topology`** — tier 4's deployment half, described below.
 
-Tier 3 is not there yet, because what it would drive does not exist: session
-crypto and the roster state machine, i.e. clients that can hold a conversation
-rather than a queue. The contract suite is already the portable crate the
-reverse direction needs (see The reverse direction).
+Tier 3 is not there yet, but it is now half-unblocked. What it would drive was
+session crypto and the roster state machine — clients that can hold a
+conversation rather than a queue. **Session crypto landed in July 2026**
+(`docs/FamilyBeacon-Sessions.md`), and the contract suite's `sessions` leg
+already drives the whole stack end to end: an envelope sealed by the real session
+layer, carried by a real Sund queue, opened again, and handed to
+`beacon_protocol::receive` with an `authenticated_sender` the session vouched
+for. What remains missing for tier 3 is the roster — several headless clients
+that can *join* a family rather than be wired together by test code. The contract
+suite is already the portable crate the reverse direction needs (see The reverse
+direction).
 
 The invocation is exact and all three arguments are load-bearing:
 
@@ -373,6 +381,17 @@ carries the expected outcome and, for rejections, a stable reason tag —
 explicitly, so renaming one without the other fails the build. A test also
 asserts the corpus covers every type in the registry, because a type nobody
 wrote a vector for is a type nothing gates.
+
+`bundles.json` exists and is live (July 2026), consumed by `sund-client`. It pins
+something stricter than an outcome: the **exact bytes a signature is computed
+over**. Canonical-JSON cases (key ordering including non-ASCII, whitespace, the
+refusal of floats), the three signing domains as hex, and — because Ed25519 is
+deterministic per RFC 8032 — a signature every implementation must reproduce
+byte-for-byte. Plus one case per bundle refusal path, with tests asserting the
+corpus covers every signature purpose and every failure mode. This corpus matters
+more than the envelope one for drift: an implementation that orders object keys
+differently produces valid-looking signatures that verify nowhere, and no amount
+of outcome-level testing finds that.
 
 The alternative — vendoring a copy into Sund — was rejected: two copies of a
 conformance corpus drift, and drift in the corpus is worse than drift in the

@@ -110,8 +110,13 @@ Transport assumptions (provided by sund-client, not specified here)
   forward secrecy. The session primitive is decided (July 2026): a double
   ratchet, implemented by vodozemac — Noise was rejected because its transport
   phase assumes a reliable ordered stream and this transport is deliberately
-  lossy. See CLAUDE.md decision #6. This spec stays agnostic regardless: it
-  defines the plaintext handed to the session layer and nothing below it.
+  lossy. See CLAUDE.md decision #6, and **`FamilyBeacon-Sessions.md` for the
+  layer itself** (built July 2026): identity keys, key bundles, rotation and
+  recovery. This spec stays agnostic regardless: it defines the plaintext handed
+  to the session layer and nothing below it.
+  One consequence of that layer is normative *here*: the `sender` comparison
+  below is against the device the session authenticated, which is derived from
+  the channel and verified key material and never from the message.
 - Delivery is at-least-once (queue redelivery is possible) and per-queue
   ordered, but cross-queue order is undefined. Hence dedupe ids and sequence
   numbers below.
@@ -305,8 +310,10 @@ Versioning and compatibility
 
 Open items
 
-1. ~~Session primitive.~~ **Decided July 2026: a double ratchet (vodozemac).**
-   See Transport assumptions above and CLAUDE.md decision #6.
+1. ~~Session primitive.~~ **Decided July 2026: a double ratchet (vodozemac),
+   and built.** Specified in `FamilyBeacon-Sessions.md`, implemented in
+   `core/sund-client`, tiers 1 and 2 green. See Transport assumptions above and
+   CLAUDE.md decision #6.
 2. ~~Library implementation strategy.~~ **Decided July 2026: a Rust core with
    UniFFI bindings**, carrying everything from this spec down through
    sund-client; native code owns only the app layer. beaconsim (Python) remains

@@ -140,7 +140,9 @@ Each device holds a local roster: a set of **device records** and a set of
     device record
         device_id        transport-layer id (Sund device id; in Try mode the
                          id minted at join)
-        identity_pk      Ed25519 public key — the thing actually being vouched
+        identity_pk      Ed25519 public key — the thing actually being vouched.
+                         The device's *protocol* identity key, which is NOT its
+                         Sund request-signing key; see below.
         display_name     self-asserted, changeable via member_info
         member_group     self-asserted grouping label (advisory, see above)
         role             self-asserted label seeding defaults (advisory)
@@ -162,6 +164,23 @@ Each device holds a local roster: a set of **device records** and a set of
 `display_name`, `member_group` and `role` are self-asserted by the device they
 describe and are never authority for anything — a device that renames itself
 "Mum's phone" gains nothing.
+
+**`identity_pk` is a protocol identity key, distinct from the device's Sund
+request-signing key** (decided July 2026; specified in
+`FamilyBeacon-Sessions.md` → Decision 1, implemented as
+`sund_client::identity::IdentityKey`). Every device holds two Ed25519 keys: one
+authenticates its HTTP requests to a server, and one — this one — identifies it to
+the family. They are separate because the roster sits above the transport port and
+must have a single answer in both transport modes, and Try mode has no server key
+at all.
+
+The consequence is worth stating where the record is defined, because it is easy
+to read this field as if the server confirmed it: **nothing cryptographically
+binds `identity_pk` to `device_id`. The vouch is the binding.** Sund ties the same
+`device_id` to a transport key it lists; a host who controls that row still holds
+no identity key, so it can deny service and cannot forge a bundle or a vouch. When
+the roster and the device list disagree about a device, the roster wins, and the
+disagreement is the injected-device signal in the reconciliation table below.
 
 Tombstones are permanent within the family's life and are never garbage
 collected. A roster that forgets a removal will re-admit the removed device on
@@ -241,6 +260,29 @@ Joining device J, invited by existing member M
        J's derived inbox. P verifies that the key material it retrieves matches
        the `identity_pk` in the vouch, and aborts loudly if it does not.
     6. J does the reciprocal for each P in the roster M gave it.
+
+Step 5 needs one addition that the bundle format does not supply. **Bundles are
+grant-only: they carry key material and no initiation address** (decided July
+2026; `FamilyBeacon-Sessions.md` → Decision 2). Fetching J's bundle therefore
+tells P how to *encrypt* to J but not where to *send*, because sending needs a
+queue sender id that only the recipient can mint. So the introducer relays the
+addresses it is already positioned to relay:
+
+    5a. J mints one inbound queue per member in the roster M gave it, and sends
+        M the resulting sender ids over the channel from step 2.
+    5b. M forwards J's sender id for P to P, and P's sender id for J to J, over
+        the pair channels M already holds. Both hops are inside existing
+        sessions; no address ever crosses in the clear.
+    5c. P and J now hold each other's addresses and verified key material, and
+        the pair channel is live in both directions.
+
+The alternative was a published-bundle mesh — a sender id inside the bundle,
+making step 5 a bare "fetch and send". It was rejected because it makes every
+member reachable, and spammable, by every other, including by a device a
+dishonest host injected into the device list in the window before the vouch check
+rejects it. Grant-only is also what confines a newly invited device to its
+inviter until these introductions actually happen. The cost is this relay and J
+minting up to 19 queues at join, which the 20-device constant already bounds.
 
 One QR per joining device, as the design guide requires — the O(N²) pairwise
 scanning the mesh shape suggests is avoided by vouching, not by trusting the
@@ -533,6 +575,9 @@ Relationship to other documents
 - `FamilyBeacon-Protocol.md` → Layering names this layer; the three types above
   belong in its registry, and its test vectors must cover the vouch and removal
   signatures.
+- `FamilyBeacon-Sessions.md` — where `identity_pk` comes from, how a bundle is
+  verified against it, and why bundles carry no initiation address (the reason
+  admission relays them).
 - `FamilyBeacon-TryMode.md` → Where the seam goes, Topics, Rotation and
   revocation — the weaker of the two implementations of everything here.
 - `FamilyBeacon-DesignGuide.md` → Core flows (pairing, leaving/revoking), Feature

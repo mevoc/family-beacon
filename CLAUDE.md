@@ -8,10 +8,11 @@ coordinated by a small server the family runs themselves.
 `beacon-protocol` (envelope codec, message registry, consent state machine,
 ledger vocabulary), `sund-client` (the signed-request form, server addresses and
 both transport-trust modes, the HTTP client, the two-plane API, the transport
-port with its Sund implementation and an in-memory one) and `contract-tests`
-(tier 2, driving the real libraries against a real relay in both modes). Tiers 1
-and 2 run in CI. Not yet written: session crypto, the roster state machine, the
-offline outbox, the UniFFI bindings, and every app. `ARCHITECTURE.md` (the
+port with its Sund implementation and an in-memory one, and the session layer —
+protocol identity key, key bundles, canonical JSON, the vodozemac ratchet and its
+persistence) and `contract-tests` (tier 2, driving the real libraries against a
+real relay in both modes). Tiers 1 and 2 run in CI. Not yet written: the roster
+state machine, the offline outbox, the UniFFI bindings, and every app. `ARCHITECTURE.md` (the
 founding vision doc) defines the shape; `core/README.md` maps what exists
 against what does not.
 Successor to `../family-beacon-android`, the original SMS-based peer-to-peer
@@ -147,6 +148,31 @@ police is honesty about residual metadata (Sund's threat model) — see #5.
      signed fallback key is the built-in answer: use it with frequent rotation and
      accept signed-prekey-grade forward secrecy for the initial message only,
      until the first ratchet step. Do not ask Sund for a pop-prekey primitive.
+     **Rotation period: 7 days**, derived from Sund's TTL clamp — see
+     `docs/FamilyBeacon-Sessions.md`.
+   - **Session layer built July 2026; two sub-decisions closed with it**, both
+     specified in `docs/FamilyBeacon-Sessions.md` and both re-pairing migrations
+     if reversed, so treat them as settled:
+     - **A separate protocol identity key.** Every device holds two Ed25519 keys:
+       `sigauth::DeviceKey` signs HTTP requests to a server, and
+       `identity::IdentityKey` is the roster's `identity_pk` — it signs bundles,
+       vouches and tombstones. Chosen because the roster sits above the transport
+       port and Try mode has no server key, and because it sharpens the dishonest
+       host's limits: the host owns the device-list row and can never forge a
+       bundle. The binding between the two keys is the vouch and nothing else,
+       which is the roster's own position. The app layer must generate and store
+       **two** seeds.
+     - **Grant-only key bundles.** A bundle carries key material and no
+       initiation address, so a device is reachable only by peers that were handed
+       a queue sender id deliberately. Rejected the published-bundle mesh: it
+       makes every member spammable by every other, including by a
+       host-injected device before the vouch check rejects it. The cost lands on
+       the roster — the introducer relays initiation addresses at join
+       (`docs/FamilyBeacon-Roster.md` → Admission, steps 5a–5c), still unbuilt.
+     One cross-repo divergence, raised not resolved: Sund's PRD says a fetcher
+     verifies a bundle "against the device list"; this implementation verifies
+     against the roster's vouched `identity_pk`, which is strictly stronger. Sund's
+     wording should be amended; the server behaves identically either way.
    - **The split:** Rust owns everything from `beacon-protocol` down through
      `sund-client` — envelope codec, session crypto, the roster state machine
      (#9), the consent state machine, offline outbox, transport port. Native owns
@@ -282,6 +308,11 @@ SMS command model is the thing being replaced.
   versioned envelope, message types (location/battery/sos/attention/geofence/
   consent/config/member_info/receipt), consent state machine, ledger rule, library
   layering (sund-client / beacon-protocol), test-vector discipline.
+- `docs/FamilyBeacon-Sessions.md` — session crypto (the below of the protocol
+  spec's plaintext boundary): the protocol identity key and its signing domains,
+  canonical JSON, the grant-only bundle format, fallback-key rotation, the
+  vodozemac ratchet and its two loss bounds, persistence and recovery. Read it
+  before touching anything that encrypts, signs or persists key material.
 - `docs/FamilyBeacon-Roster.md` — the membership layer (decision #9): device-as-
   principal, the vouch-based admission protocol, removal and tombstones,
   reconciliation, and why the server's device list is not the authority on who is

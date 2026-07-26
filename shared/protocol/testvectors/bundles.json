@@ -1,0 +1,172 @@
+{
+  "description": "Canonical key-bundle and canonical-JSON test vectors for Family Beacon. Canonical HERE (docs/FamilyBeacon-Testing.md -> Shared test vectors); consumed by sund-client and, by checkout at a pinned ref, by Sund's beaconsim. Never vendor a second copy. These vectors pin the two things three implementations cannot be allowed to disagree about: the canonical JSON encoding, and the domain-separated bytes an Ed25519 signature is computed over. Spec: docs/FamilyBeacon-Sessions.md.",
+  "bundle_version": 1,
+  "signing": {
+    "note": "A signature is computed over DOMAIN || canonical_json(payload), where DOMAIN is the ASCII string below followed by a single 0x00 byte. Ed25519 per RFC 8032, so signatures are deterministic and every implementation must reproduce sig_b64 exactly.",
+    "domains": {
+      "bundle": "family-beacon/bundle/v1",
+      "vouch": "family-beacon/vouch/v1",
+      "removal": "family-beacon/removal/v1"
+    },
+    "domain_hex": {
+      "bundle": "66616d696c792d626561636f6e2f62756e646c652f763100",
+      "vouch": "66616d696c792d626561636f6e2f766f7563682f763100",
+      "removal": "66616d696c792d626561636f6e2f72656d6f76616c2f763100"
+    }
+  },
+  "canonical_json_cases": [
+    {
+      "name": "keys-are-sorted",
+      "expect": "encode",
+      "input": { "zebra": 1, "alpha": 2, "middle": { "z": 1, "a": 2 } },
+      "canonical_json": "{\"alpha\":2,\"middle\":{\"a\":2,\"z\":1},\"zebra\":1}"
+    },
+    {
+      "name": "no-insignificant-whitespace",
+      "expect": "encode",
+      "input": { "a": [1, 2] },
+      "canonical_json": "{\"a\":[1,2]}"
+    },
+    {
+      "name": "non-ascii-keys-sort-by-utf8-bytes",
+      "expect": "encode",
+      "note": "Byte order, not locale collation. Swedish is a shipping UI language, so the ordering of a/å/ö is not hypothetical.",
+      "input": { "ö": 1, "a": 2, "å": 3 },
+      "canonical_json": "{\"a\":2,\"å\":3,\"ö\":1}"
+    },
+    {
+      "name": "empty-object-and-array",
+      "expect": "encode",
+      "input": { "obj": {}, "arr": [] },
+      "canonical_json": "{\"arr\":[],\"obj\":{}}"
+    },
+    {
+      "name": "array-order-is-preserved",
+      "expect": "encode",
+      "note": "Arrays are ordered data; only object keys are sorted.",
+      "input": { "seq": [3, 1, 2] },
+      "canonical_json": "{\"seq\":[3,1,2]}"
+    },
+    {
+      "name": "negative-and-large-integers",
+      "expect": "encode",
+      "input": { "low": -9007199254740993, "high": 18446744073709551615 },
+      "canonical_json": "{\"high\":18446744073709551615,\"low\":-9007199254740993}"
+    },
+    {
+      "name": "float-is-refused",
+      "expect": "refuse",
+      "reason": "floating_point",
+      "note": "A float has no single shortest representation every language agrees on, so signing over one is signing over an ambiguous encoding. Nothing signed in this stack carries a float; coordinates travel inside an encrypted envelope, which is sealed rather than signed.",
+      "input": { "subject": { "accuracy": 1.5 } },
+      "float_path": "subject.accuracy"
+    },
+    {
+      "name": "float-inside-array-is-refused",
+      "expect": "refuse",
+      "reason": "floating_point",
+      "input": { "points": [1, 2.5] },
+      "float_path": "points[1]"
+    }
+  ],
+  "bundle_cases": [
+    {
+      "name": "canonical-signed-bundle",
+      "expect": "verify",
+      "identity_seed_b64": "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=",
+      "identity_pk_b64": "ebVWLo/mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ=",
+      "expected_device_id": "dev_A",
+      "bundle": {
+        "v": 1,
+        "device_id": "dev_A",
+        "identity_pk": "ebVWLo/mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ=",
+        "curve25519": "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqo=",
+        "fallback_key": "u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7s=",
+        "fallback_key_id": "AAAAAAA",
+        "published_at": "2026-07-26T10:00:00Z"
+      },
+      "canonical_json": "{\"curve25519\":\"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqo=\",\"device_id\":\"dev_A\",\"fallback_key\":\"u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7s=\",\"fallback_key_id\":\"AAAAAAA\",\"identity_pk\":\"ebVWLo/mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ=\",\"published_at\":\"2026-07-26T10:00:00Z\",\"v\":1}",
+      "sig_b64": "7WS2aENgGhaH7sUHNtLj3I1TjVJCqs5Qi20Pq1WMx6B4gDmIXxzFABsC/teMJfL7+9F9aYOjrbVQu1qLAwW+Dw=="
+    },
+    {
+      "name": "bundle-carries-no-initiation-address",
+      "expect": "field_set",
+      "note": "Grant-only reachability (CLAUDE.md decision on bundle reachability, July 2026): the bundle carries key material and no queue sender id, so a device is reachable only by peers a member introduced it to. If a field like sender_id is ever added, this case fails and whoever added it has to revisit that decision.",
+      "fields": [
+        "curve25519",
+        "device_id",
+        "fallback_key",
+        "fallback_key_id",
+        "identity_pk",
+        "published_at",
+        "v"
+      ]
+    },
+    {
+      "name": "signed-by-another-identity",
+      "expect": "wrong_identity",
+      "note": "The injected-device case: a dishonest host serves a bundle whose identity key it controls. The vouched identity_pk does not match, so it is refused before any signature check.",
+      "expected_device_id": "dev_A",
+      "expected_identity_pk_b64": "My6+jSfLcyOzpAHBwTtd1kvMwOEOzaHCtdEaA3eaheU=",
+      "bundle": {
+        "v": 1,
+        "device_id": "dev_A",
+        "identity_pk": "ebVWLo/mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ=",
+        "curve25519": "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqo=",
+        "fallback_key": "u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7s=",
+        "fallback_key_id": "AAAAAAA",
+        "published_at": "2026-07-26T10:00:00Z"
+      },
+      "sig_b64": "7WS2aENgGhaH7sUHNtLj3I1TjVJCqs5Qi20Pq1WMx6B4gDmIXxzFABsC/teMJfL7+9F9aYOjrbVQu1qLAwW+Dw=="
+    },
+    {
+      "name": "signature-from-the-wrong-key",
+      "expect": "bad_signature",
+      "note": "The identity_pk field matches what the family vouched for, but the signature was made by a different key. Only a real verification catches this.",
+      "expected_device_id": "dev_A",
+      "expected_identity_pk_b64": "ebVWLo/mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ=",
+      "bundle": {
+        "v": 1,
+        "device_id": "dev_A",
+        "identity_pk": "ebVWLo/mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ=",
+        "curve25519": "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqo=",
+        "fallback_key": "u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7s=",
+        "fallback_key_id": "AAAAAAA",
+        "published_at": "2026-07-26T10:00:00Z"
+      },
+      "sig_b64": "cHzhqs6iPAlkpHpprlpdVTVo8qUmb/b1Al4xw3BAPKIfIQcVFOwo6CQNb4Ti9oDFnXnTAdHI85urJEdUx/ytCw=="
+    },
+    {
+      "name": "served-from-the-wrong-slot",
+      "expect": "wrong_device",
+      "note": "Sund serves bundle bytes from whichever slot the host puts them in, without noticing. device_id is inside the signature so the client does.",
+      "expected_device_id": "dev_B",
+      "expected_identity_pk_b64": "ebVWLo/mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ=",
+      "bundle": {
+        "v": 1,
+        "device_id": "dev_A",
+        "identity_pk": "ebVWLo/mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ=",
+        "curve25519": "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqo=",
+        "fallback_key": "u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7s=",
+        "fallback_key_id": "AAAAAAA",
+        "published_at": "2026-07-26T10:00:00Z"
+      },
+      "sig_b64": "7WS2aENgGhaH7sUHNtLj3I1TjVJCqs5Qi20Pq1WMx6B4gDmIXxzFABsC/teMJfL7+9F9aYOjrbVQu1qLAwW+Dw=="
+    },
+    {
+      "name": "unsupported-version",
+      "expect": "unsupported_version",
+      "found_version": 2,
+      "bundle": {
+        "v": 2,
+        "device_id": "dev_A",
+        "identity_pk": "ebVWLo/mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ=",
+        "curve25519": "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqo=",
+        "fallback_key": "u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7s=",
+        "fallback_key_id": "AAAAAAA",
+        "published_at": "2026-07-26T10:00:00Z"
+      },
+      "sig_b64": "7WS2aENgGhaH7sUHNtLj3I1TjVJCqs5Qi20Pq1WMx6B4gDmIXxzFABsC/teMJfL7+9F9aYOjrbVQu1qLAwW+Dw=="
+    }
+  ]
+}

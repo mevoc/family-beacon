@@ -24,6 +24,7 @@ rustls-native-certs = { version = "0.8", optional = true }
 rustls-pki-types = { version = "1", optional = true }
 ureq = { version = "3.3", optional = true, default-features = false, features = ["rustls-no-provider"] }
 webpki-roots = { version = "1", optional = true }
+vodozemac = { version = "0.10", default-features = false }
 
 [features]
 default = ["agent"]

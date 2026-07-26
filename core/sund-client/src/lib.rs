@@ -12,6 +12,10 @@
 //! ```text
 //!   beacon-protocol         above this crate: envelope, consent, ledger
 //!   ────────────────────────────────────────────────────────────────────
+//!   identity · bundle       who a device is · how peers learn its keys
+//!   session · session_store the double ratchet, and what persists of it
+//!   canonical               the encoding every signature is computed over
+//!   ────────────────────────────────────────────────────────────────────
 //!   transport               the port …………………………………………… transport
 //!   sund_transport          … implemented over Sund queues
 //!   client                  the two planes: DeviceClient / SundClient
@@ -20,7 +24,7 @@
 //!   agent                   the shipping implementation (feature `agent`)
 //! ```
 //!
-//! Two design points worth knowing before adding to any of it:
+//! Three design points worth knowing before adding to any of it:
 //!
 //! - **The transport port is pulled, not pushed** ([`transport`]). The core has
 //!   to be drivable from outside — WorkManager, BGTask — and it never assumes
@@ -28,17 +32,29 @@
 //! - **Trust is a property of the client, not of the call** ([`address`],
 //!   [`agent`]). An [`http::HttpClient`] is bound to one server address, so the
 //!   verification mode cannot be forgotten on one request out of forty.
-//!
-//! Still to come: session crypto by vodozemac, which slots in above
-//! [`sund_transport`] — this crate carries ciphertext and does not make it.
+//! - **The session layer knows nothing about Sund.** [`identity`], [`bundle`],
+//!   [`canonical`], [`session`] and [`session_store`] sit *above* the transport
+//!   port and touch no type from [`client`]: a bundle reaches a peer as opaque
+//!   bytes, which is all Sund's dead-drop promises and all ntfy could ever
+//!   offer. They live in this crate because
+//!   `docs/FamilyBeacon-Protocol.md` → Layering puts session crypto here, and
+//!   they are written so that Try mode's `ntfy-client` can consume them
+//!   unchanged — if that ever wants them without the Sund half, the extraction
+//!   is a file move rather than a redesign. Spec:
+//!   `docs/FamilyBeacon-Sessions.md`.
 
 pub mod address;
 #[cfg(feature = "agent")]
 pub mod agent;
+pub mod bundle;
+pub mod canonical;
 pub mod client;
 pub mod http;
+pub mod identity;
 pub mod memory;
 mod rfc3339;
+pub mod session;
+pub mod session_store;
 pub mod sigauth;
 pub mod sund_transport;
 pub mod transport;
