@@ -1,0 +1,100 @@
+{
+  "description": "Canonical roster test vectors for Family Beacon. Canonical HERE (docs/FamilyBeacon-Testing.md -> Shared test vectors); consumed by beacon-roster and, by checkout at a pinned ref, by Sund's beaconsim. Never vendor a second copy. docs/FamilyBeacon-Roster.md requires these: 'its test vectors must cover the vouch and removal signatures'. Ed25519 is deterministic per RFC 8032, so every signature here must be reproduced byte-for-byte. The signing domains are in bundles.json; a vouch signs family-beacon/vouch/v1\\u0000 || canonical_json(payload) and a removal signs family-beacon/removal/v1\\u0000 || canonical_json(payload).",
+  "keys": {
+    "introducer_seed_b64": "AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=",
+    "introducer_pk_b64": "ebVWLo/mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ=",
+    "subject_seed_b64": "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=",
+    "subject_pk_b64": "IVL40Zt5HSRFMkLhXy6rbLfP+ntqXtMAl5YOBpiB2xI="
+  },
+  "vouch_cases": [
+    {
+      "name": "canonical-vouch",
+      "expect": "verify",
+      "note": "The only path into a roster. Signed by the INTRODUCER's identity key over subject + epoch; the signature does not cover itself.",
+      "signed_by": "introducer",
+      "message": {
+        "subject": {
+          "device_id": "dev_B",
+          "identity_pk": "IVL40Zt5HSRFMkLhXy6rbLfP+ntqXtMAl5YOBpiB2xI=",
+          "display_name": "Emma's phone",
+          "member_group": "Emma",
+          "role": "child",
+          "joined_at": "2026-07-26T10:00:00Z"
+        },
+        "epoch": 3,
+        "vouch": "FyTnDfpSJU5scBwzSfLrhUtbWN7HQ/9mdkFevC4Q1Qx3tGsyW/UgsdY7zicuZw5qusFjQIkPNyLtOH3UO1NsAg=="
+      },
+      "canonical_json": "{\"epoch\":3,\"subject\":{\"device_id\":\"dev_B\",\"display_name\":\"Emma's phone\",\"identity_pk\":\"IVL40Zt5HSRFMkLhXy6rbLfP+ntqXtMAl5YOBpiB2xI=\",\"joined_at\":\"2026-07-26T10:00:00Z\",\"member_group\":\"Emma\",\"role\":\"child\"}}"
+    },
+    {
+      "name": "vouch-signed-by-the-subject-itself",
+      "expect": "reject",
+      "reason": "self_vouch",
+      "note": "Only the founding device self-vouches, and only when founding. Otherwise any device holding a channel could admit itself. The signature is valid; the refusal is structural, which is why it is a separate case.",
+      "signed_by": "subject",
+      "introducer_is_subject": true
+    },
+    {
+      "name": "vouch-with-a-tampered-subject-key",
+      "expect": "reject",
+      "reason": "bad_signature",
+      "note": "The attacker keeps the introducer's signature and swaps identity_pk for one it controls. Because identity_pk is inside the signed payload, this fails verification rather than silently re-keying the subject.",
+      "signed_by": "introducer",
+      "tamper": { "field": "subject.identity_pk", "to": "ebVWLo/mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ=" }
+    }
+  ],
+  "removal_cases": [
+    {
+      "name": "canonical-removal",
+      "expect": "verify",
+      "note": "A tombstone, irreversible for this device id. Signed by the remover's identity key.",
+      "signed_by": "introducer",
+      "message": {
+        "subject": "dev_B",
+        "reason": "lost",
+        "removed_at": "2026-07-26T11:00:00Z",
+        "epoch": 4,
+        "sig": "JCwaxe5AIX4IMQMFG240uesarj3FgxPDZWT7NJ4L/erDHWwLsFEWFJKvXAwxf4AIx23ZP4Zqz+SWmx1DSv/wAg=="
+      },
+      "canonical_json": "{\"epoch\":4,\"reason\":\"lost\",\"removed_at\":\"2026-07-26T11:00:00Z\",\"subject\":\"dev_B\"}"
+    },
+    {
+      "name": "removal-with-a-redirected-subject",
+      "expect": "reject",
+      "reason": "bad_signature",
+      "note": "Repointing a valid removal at a different device is the obvious attack on a broadcast tombstone. subject is inside the signed payload, so it fails.",
+      "signed_by": "introducer",
+      "tamper": { "field": "subject", "to": "dev_C" }
+    }
+  ],
+  "sync_cases": [
+    {
+      "name": "canonical-sync-digest",
+      "expect": "digest",
+      "note": "The digest is NOT a signature: a sync rides an authenticated session, so the sender is already known, and the digest only lets a receiver whose roster already matches stop immediately. Devices MUST be sorted by device_id — two senders with the same knowledge have to produce the same bytes.",
+      "message": {
+        "epoch": 4,
+        "devices": [
+          {
+            "device_id": "dev_A",
+            "identity_pk": "ebVWLo/mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ=",
+            "state": "active"
+          },
+          {
+            "device_id": "dev_B",
+            "identity_pk": "IVL40Zt5HSRFMkLhXy6rbLfP+ntqXtMAl5YOBpiB2xI=",
+            "state": "removed"
+          }
+        ],
+        "digest": "c544cc1adfff74ce253d06fd262b433b65de9e63b744edae9414652e66b96d16"
+      },
+      "canonical_json": "{\"devices\":[{\"device_id\":\"dev_A\",\"identity_pk\":\"ebVWLo/mVPlAeLES6KmLp5AfhTrmlb7X4OORC60ElmQ=\",\"state\":\"active\"},{\"device_id\":\"dev_B\",\"identity_pk\":\"IVL40Zt5HSRFMkLhXy6rbLfP+ntqXtMAl5YOBpiB2xI=\",\"state\":\"removed\"}],\"epoch\":4}"
+    }
+  ],
+  "constants": {
+    "note": "Build-time constants, not configuration. Every implementation must agree, because a family whose devices disagree about the cap would admit devices some members refuse.",
+    "max_active_devices": 20,
+    "max_membership_events_per_device_per_day": 5,
+    "churn_window_seconds": 86400
+  }
+}

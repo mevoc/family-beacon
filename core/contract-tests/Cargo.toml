@@ -16,6 +16,8 @@ sund-client = { path = "../sund-client" }
 # drive the *whole* stack — envelope, session, real relay, back to envelope —
 # rather than asserting that ciphertext survives a round trip.
 beacon-protocol = { path = "../beacon-protocol" }
+beacon-roster = { path = "../beacon-roster" }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

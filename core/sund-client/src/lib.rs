@@ -52,7 +52,7 @@ pub mod client;
 pub mod http;
 pub mod identity;
 pub mod memory;
-mod rfc3339;
+pub mod rfc3339;
 pub mod session;
 pub mod session_store;
 pub mod sigauth;

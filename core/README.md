@@ -9,7 +9,7 @@ biometrics and local storage stay native per platform.
     ─────────────────────────────────────────────────────────────────
     beacon-protocol           envelope codec, message types, consent, ledger
     ─────────────────────────────────────────────────────────────────
-    family roster             membership, introductions, revocation policy
+    beacon-roster             membership, introductions, revocation policy
     ─────────────────────────────────────────────────────────────────
     session crypto            identity · bundle · session · session_store
     ─────────────────────────────────────────────────────────────────
@@ -34,6 +34,7 @@ one, it is in the wrong crate.
 | --- | --- |
 | `beacon-protocol` | Envelope codec and the v1 message-type registry, the consent state machine, the transparency ledger's vocabulary, and the receive path that binds an outcome to its ledger entry. |
 | `sund-client` | The canonical signed-request form (`sigauth`), server addresses and both transport-trust modes (`address`, `agent`), the two-plane API client (`client`), the transport port and its Sund implementation (`transport`, `sund_transport`), an in-memory implementation of the port for tests, and the session layer: the protocol identity key and its signing domains (`identity`), canonical JSON (`canonical`), the grant-only key bundle (`bundle`), the vodozemac ratchet (`session`) and its persistence (`session_store`). |
+| `beacon-roster` | The membership state machine of `docs/FamilyBeacon-Roster.md`: device records and tombstones, vouch-based admission, removal, the churn budget, `roster_sync` merging, server-list reconciliation and mutual-eviction detection. Depends on `beacon-protocol` for the wire types and on `sund-client` for identity keys and canonical JSON — no HTTP client comes with it. |
 | `contract-tests` | Tier 2 of `docs/FamilyBeacon-Testing.md`: the shipping libraries against a real relay in both trust modes. Needs a server; see below. |
 
 Design points worth knowing before adding to any of them:
@@ -71,10 +72,11 @@ Two more, added with the session layer:
 
 ## What is not here yet
 
-- **The roster state machine.** Specified in `docs/FamilyBeacon-Roster.md`;
-  its wire types are already in the registry here, and the management-plane
-  calls it needs (device list, invitations, bundles, revocation) are in
-  `sund-client::client`.
+- **The initiation-address relay.** Grant-only bundles carry no queue sender id,
+  so at join the introducer has to relay addresses between the joiner and every
+  existing member (`docs/FamilyBeacon-Roster.md` → Admission, steps 5a-5c). The
+  roster decides *who* is in the family; nothing yet does the address exchange,
+  and a real join flow needs it.
 - **The offline outbox.** Queueing sends while the network is gone, and
   retrying them, sits above the transport port and is not written.
 - **UniFFI bindings.** Deliberately absent until there is an app-facing API

@@ -10,6 +10,8 @@
 // not.
 #[path = "contract/enrollment.rs"]
 mod enrollment;
+#[path = "contract/membership.rs"]
+mod membership;
 #[path = "contract/pinning.rs"]
 mod pinning;
 #[path = "contract/port.rs"]

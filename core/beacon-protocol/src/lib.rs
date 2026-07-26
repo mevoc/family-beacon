@@ -6,9 +6,14 @@
 //! mode — envelope, consent and ledger alike (`docs/FamilyBeacon-TryMode.md` →
 //! Where the seam goes). Nothing in this crate knows what a server is.
 //!
-//! The crate holds no family membership state: that is the roster layer of
-//! `docs/FamilyBeacon-Roster.md`, whose wire types appear in the registry here
-//! because the registry is one list, but whose state machine is its own.
+//! The crate holds no family membership **state**: that is the roster layer of
+//! `docs/FamilyBeacon-Roster.md`, implemented in the `beacon-roster` crate. What
+//! does live here is that layer's wire vocabulary ([`roster`]) — because the
+//! registry is one list, and because the payloads its signatures cover are
+//! exactly the kind of thing three implementations must agree on byte-for-byte.
+//! Verifying one of those signatures needs an Ed25519 key, canonical JSON and a
+//! local roster to check the introducer against; none of that belongs to this
+//! crate, and keeping it out is what lets this crate stay serde-only.
 //!
 //! ```
 //! use beacon_protocol::{Reception, receive};
@@ -31,6 +36,7 @@
 pub mod consent;
 pub mod envelope;
 pub mod ledger;
+pub mod roster;
 
 use envelope::{Envelope, RejectReason};
 use ledger::{LedgerEntry, LedgerEvent};

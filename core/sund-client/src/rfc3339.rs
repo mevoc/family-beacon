@@ -18,7 +18,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 /// Sub-second precision is dropped: Go's `time.RFC3339` layout has none, so
 /// keeping it would only produce a timestamp that differs from the one the
 /// server would have written for the same instant.
-pub(crate) fn format(time: SystemTime) -> String {
+pub fn format(time: SystemTime) -> String {
     let seconds = time
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as i64);
@@ -43,7 +43,7 @@ fn format_epoch_seconds(seconds: i64) -> String {
 /// (discarded) and a numeric offset as well as `Z`. Returns `None` for anything
 /// it cannot read rather than guessing — a timestamp this crate cannot parse is
 /// a field it must not pretend to know.
-pub(crate) fn parse(text: &str) -> Option<SystemTime> {
+pub fn parse(text: &str) -> Option<SystemTime> {
     let bytes = text.as_bytes();
     if bytes.len() < 20 {
         return None;

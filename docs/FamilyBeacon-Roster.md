@@ -1,6 +1,9 @@
 Family Beacon — Family roster
 
-Status: v0.1 (Draft)
+Status: v0.1 — **implemented July 2026** in `core/beacon-roster` (state machine,
+admission, removal, churn budget, reconciliation) with the wire types in
+`core/beacon-protocol`'s `roster` module. Tiers 1 and 2 green; the shared vectors
+are `shared/protocol/testvectors/roster.json`.
 
 The layer named but not specified in `FamilyBeacon-Protocol.md` → Layering and
 `FamilyBeacon-TryMode.md` → Where the seam goes: **membership, introductions and
@@ -485,6 +488,18 @@ So the state machine keeps both tombstones and the app says what happened:
 - Detection is local and needs no coordination — a device holds a tombstone for
   D while D holds one for it, which any device learns from its own roster plus
   the next `roster_sync`.
+- **A removal naming *this* device is accepted even from a device this roster has
+  already removed** (settled July 2026, building the state machine; the general
+  rule that a removed device's messages carry no authority would otherwise make
+  mutual eviction undetectable in exactly the ordering that produces it). If Alice
+  removes Bob and Bob removes Alice in ignorance, Bob is already inactive in
+  Alice's roster by the time his removal arrives; refusing it would mean Alice
+  never learns she was evicted, which contradicts the requirement below that the
+  removed device is told. Accepting it grants Bob nothing: it records an
+  informational fact about Alice's own standing, takes no capability from anyone
+  else, and still requires a signature verifying against the key Alice already
+  holds for Bob. This is the *only* message type a removed device may still have
+  applied, and only when its subject is the receiver itself.
 - The UI states the split plainly, names both parties, and shows **who can still
   see whom** from this device's point of view. The user's actual question is
   "am I still connected to my daughter", and that is answerable locally even
@@ -509,6 +524,7 @@ three of which are user-visible:
 | Server says | Roster says | Action |
 |---|---|---|
 | revoked | active | Treat as removed. The server can only take away, and a host that lies in this direction merely denies service — which is visible. |
+
 | listed | active | Normal. Use the device's bundle for pairing; verify the retrieved key material against the roster's `identity_pk`. |
 | listed | unknown | **Do not admit.** Ledger and surface: a device exists on the server that no family member vouched for. This is the injected-device signal — it is the one place a dishonest host becomes visible to the family. |
 | absent | active | The device was revoked server-side, or the list is being manipulated. Mark unreachable, surface it, do not tombstone on this evidence alone. |
@@ -517,6 +533,22 @@ The asymmetry is the point: a host that adds devices is detected, and a host tha
 removes them can deny service but cannot read anything. That is the strongest
 statement available given that the host controls the list at all, and it is worth
 stating in PRIVACY.md alongside the residual-metadata paragraph.
+
+**"Treat as removed" means deactivate, not tombstone** (settled July 2026 when the
+state machine was built; the original wording did not say which). A tombstone is
+permanent and re-admission requires a fresh device id, so tombstoning on the
+server's say-so would let a host that revokes every device destroy a family's
+roster irreversibly — forcing everyone to re-pair from nothing, which is a good
+deal more than "denying service". Deactivating instead:
+
+- keeps the honest case identical — the device is gone, loudly, its channels are
+  retired and its grants dropped;
+- leaves the dishonest case recoverable, because a fresh signed vouch from a
+  family member can readmit that same device id, which a tombstone would forbid.
+
+The rule that the server can only *take away* is preserved either way. What it
+must not acquire is the power to make a removal permanent, because permanence is
+the one property only the family's own signatures should confer.
 
 Try mode: reconciling without a server
 

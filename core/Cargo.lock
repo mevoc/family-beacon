@@ -59,6 +59,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "beacon-roster"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "beacon-protocol",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sund-client",
+]
+
+[[package]]
 name = "bitflags"
 version = "2.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -159,6 +171,8 @@ name = "contract-tests"
 version = "0.1.0"
 dependencies = [
  "beacon-protocol",
+ "beacon-roster",
+ "serde_json",
  "sund-client",
 ]
 

@@ -10,9 +10,12 @@ ledger vocabulary), `sund-client` (the signed-request form, server addresses and
 both transport-trust modes, the HTTP client, the two-plane API, the transport
 port with its Sund implementation and an in-memory one, and the session layer —
 protocol identity key, key bundles, canonical JSON, the vodozemac ratchet and its
-persistence) and `contract-tests` (tier 2, driving the real libraries against a
-real relay in both modes). Tiers 1 and 2 run in CI. Not yet written: the roster
-state machine, the offline outbox, the UniFFI bindings, and every app. `ARCHITECTURE.md` (the
+persistence), `beacon-roster` (the membership state machine: vouch-based
+admission, removal and tombstones, the churn budget, reconciliation and split
+detection) and `contract-tests` (tier 2, driving the real libraries against a
+real relay in both modes — including a leg where devices actually found a family
+and join it). Tiers 1 and 2 run in CI. Not yet written: the offline outbox, the
+initiation-address relay at join, the UniFFI bindings, and every app. `ARCHITECTURE.md` (the
 founding vision doc) defines the shape; `core/README.md` maps what exists
 against what does not.
 Successor to `../family-beacon-android`, the original SMS-based peer-to-peer
@@ -270,8 +273,25 @@ police is honesty about residual metadata (Sund's threat model) — see #5.
      is enforced at the verifier, since the introducer is the attacker. Over
      budget holds an admission for human approval; an over-budget removal still
      applies immediately, because removal is fail-safe and admission is not.
+   **Built July 2026** in `core/beacon-roster`, with the wire types in
+   `beacon-protocol`'s `roster` module and vectors in
+   `shared/protocol/testvectors/roster.json`. Two ambiguities in the spec were
+   settled in the building and written back into it, both in the safer direction:
+   - **A server revocation deactivates a record; it does not tombstone it.**
+     "Treat as removed" did not say which, and tombstones are permanent — so
+     tombstoning on the host's say-so would let a host that revokes everything
+     destroy a family's roster irreversibly, since re-admission needs a fresh
+     device id. Deactivating keeps the honest case identical and the dishonest
+     one recoverable by a fresh vouch.
+   - **A removal naming the receiver is accepted even from a device the receiver
+     has already removed.** Otherwise mutual eviction is undetectable in exactly
+     the ordering that produces it, and the removed device is never told — which
+     the spec forbids. It grants the remover nothing: it records a fact about the
+     receiver's own standing and still requires a valid signature.
    Remaining open item in the spec: the founding device self-vouches, so whether a
    second device should co-sign the founding record is undecided. Not blocking.
+   Still unbuilt and blocking a real join flow: the initiation-address relay that
+   grant-only bundles require (spec'd as Admission steps 5a–5c).
 10. **Client build order — CLOSED (July 2026): Android first**, to a complete v1
    safety core, before iOS or web start. Rationale in ARCHITECTURE.md (Client
    platforms and build order): Android is the only platform where the whole stack

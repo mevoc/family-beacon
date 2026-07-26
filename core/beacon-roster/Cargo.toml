@@ -1,0 +1,30 @@
+[package]
+name = "beacon-roster"
+version = "0.1.0"
+description = "Family Beacon's membership layer: device-as-principal roster, vouch-based admission, removal, churn budget and reconciliation"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# The wire types and the ledger vocabulary. Depending upwards on beacon-protocol
+# is the direction docs/FamilyBeacon-Roster.md sanctions: "the roster's wire
+# messages are ordinary beacon-protocol types ... the layer boundary is one of
+# state and policy, not of encoding."
+beacon-protocol = { path = "../beacon-protocol" }
+
+# Identity keys, canonical JSON and bundle verification. `default-features =
+# false` drops the `agent` feature: the roster makes no HTTP requests, so
+# ureq/rustls have no business in its dependency tree.
+sund-client = { path = "../sund-client", default-features = false }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+
+[dev-dependencies]
+base64 = { workspace = true }
+
+[lints]
+workspace = true

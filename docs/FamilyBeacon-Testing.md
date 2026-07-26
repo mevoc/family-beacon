@@ -1,7 +1,8 @@
 Family Beacon — Testing and CI strategy
 
-Status: v0.4 (Draft) — tiers 1 and 2 and the deployment-topology job are
-implemented; tier 3 awaits session crypto and the roster
+Status: v0.5 (Draft) — tiers 1 and 2 and the deployment-topology job are
+implemented; tier 3 is unblocked (session crypto and the roster both landed July
+2026) and not yet written
 
 How Family Beacon is tested, and specifically how it is tested *together with*
 Sund — which lives in another repo (`../sund`), ships as a container image, and
@@ -258,17 +259,22 @@ What CI runs today
   pinned/canary matrix as `topology`.
 - **`topology`** — tier 4's deployment half, described below.
 
-Tier 3 is not there yet, but it is now half-unblocked. What it would drive was
-session crypto and the roster state machine — clients that can hold a
-conversation rather than a queue. **Session crypto landed in July 2026**
-(`docs/FamilyBeacon-Sessions.md`), and the contract suite's `sessions` leg
-already drives the whole stack end to end: an envelope sealed by the real session
-layer, carried by a real Sund queue, opened again, and handed to
-`beacon_protocol::receive` with an `authenticated_sender` the session vouched
-for. What remains missing for tier 3 is the roster — several headless clients
-that can *join* a family rather than be wired together by test code. The contract
-suite is already the portable crate the reverse direction needs (see The reverse
-direction).
+**Tier 3 is now unblocked.** What it needed was session crypto and the roster
+state machine — clients that can hold a conversation rather than a queue, and
+that can *join* a family rather than be wired together by test code. Both landed
+in July 2026 (`docs/FamilyBeacon-Sessions.md`, `docs/FamilyBeacon-Roster.md`),
+and the contract suite's `sessions` and `membership` legs already drive the whole
+stack end to end against a real relay: a family founded, a device vouched in and
+adopting the roster, bundles verified against the roster's `identity_pk`, an
+envelope sealed, carried by a real Sund queue and opened again, and a member
+evicted on both sides.
+
+What tier 3 adds on top is not new capability but *scale and adversity*: several
+headless clients running concurrently rather than a handful of devices driven
+sequentially in one process, with partitions, restarts and interleaved
+membership changes. The contract suite is already the portable crate the reverse
+direction needs (see The reverse direction), and the `membership` leg is the
+template a system-test client would grow from.
 
 The invocation is exact and all three arguments are load-bearing:
 
@@ -381,6 +387,15 @@ carries the expected outcome and, for rejections, a stable reason tag —
 explicitly, so renaming one without the other fails the build. A test also
 asserts the corpus covers every type in the registry, because a type nobody
 wrote a vector for is a type nothing gates.
+
+`roster.json` exists and is live (July 2026), consumed by `beacon-roster`. It
+pins what `docs/FamilyBeacon-Roster.md` asks for — "its test vectors must cover
+the vouch and removal signatures" — as reproducible Ed25519 signatures over
+canonical payloads, plus the sync digest and a case where the signature is
+perfectly valid and the vouch is refused anyway (a device vouching for itself),
+so an implementation cannot "pass" a structural rule by failing verification for
+the wrong reason. It also pins the two abuse constants: a family whose devices
+disagree about the 20-device cap would admit devices some members refuse.
 
 `bundles.json` exists and is live (July 2026), consumed by `sund-client`. It pins
 something stricter than an outcome: the **exact bytes a signature is computed
