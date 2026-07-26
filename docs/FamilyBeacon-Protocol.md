@@ -262,6 +262,15 @@ roster_introduce / roster_remove / roster_sync
     consent-gated — membership is the precondition for features, not a feature.
     Always ledgered as discrete, readable events.
 
+channel_offer
+    of, for, sealed. Hands one device the queue address it needs to reach
+    another. Grant-only key bundles carry no initiation address, so at join the
+    introducer relays the first one (FamilyBeacon-Roster.md → Admission, step 5);
+    `sealed` is a session frame from `of` to `for`, so the relayer carries a
+    capability it cannot read. Plumbing rather than content, and like the roster
+    types it is never consent-gated: the channel is the pipe and consent is the
+    valve. Always ledgered — it changes who can reach you, which is the rule.
+
 receipt
     of (message id), status (delivered | seen; plus suppressed and the reply
     values for attention, above). Mandatory for sos, sos_clear, attention and

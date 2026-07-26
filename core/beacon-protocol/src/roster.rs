@@ -155,6 +155,59 @@ pub struct RosterSync {
     pub digest: String,
 }
 
+/// `channel_offer` — hands one device the address it needs to reach another.
+///
+/// Grant-only bundles carry key material and no initiation address, so knowing a
+/// device exists never makes it reachable: sending needs a queue sender id, which
+/// only the recipient can mint. At join, those ids are relayed by the introducer
+/// — the one device that already has channels to everybody
+/// (`docs/FamilyBeacon-Roster.md` → Admission, steps 5a–5c).
+///
+/// **The address is sealed, so the relayer is a courier and not a party.**
+/// `sealed` is a session frame from `of` to `for`, which the relayer can carry
+/// and cannot read. That matters because a sender id is a capability: a relayer
+/// who could read it could bind the queue's sender key first and permanently
+/// break the pair it was meant to introduce. Sealing costs one nested encryption
+/// and removes the whole class.
+///
+/// The same type serves the reply, unrelayed. Once P holds J's address it can
+/// send directly, so it returns its own offer over the channel that now exists —
+/// only the first direction ever needs a relay.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChannelOffer {
+    /// The device whose inbox this addresses — the one that minted the queue and
+    /// sealed the address.
+    ///
+    /// Named on the outside because the recipient must know whose session to
+    /// open `sealed` with. It is a *claim*: what proves it is that `sealed`
+    /// decrypts under that device's session, which the session layer checks.
+    #[serde(rename = "of")]
+    pub of: String,
+    /// The device this offer is for. Anyone else must drop it.
+    #[serde(rename = "for")]
+    pub for_device: String,
+    /// The sealed [`ChannelAddress`], base64: a session frame from `of` to
+    /// `for`.
+    pub sealed: String,
+}
+
+/// What a [`ChannelOffer`] carries once unsealed.
+///
+/// Only ever seen as plaintext by the two devices at the ends of the channel.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChannelAddress {
+    /// The queue sender id the recipient should send to. A per-queue secret the
+    /// owner minted; it is the whole of "you may reach me".
+    pub sender_id: String,
+    /// RFC 3339 UTC, when the queue was minted.
+    ///
+    /// Advisory today and deliberately present: a relayer can replay an old
+    /// offer, and this is what a future receiver would order them by without a
+    /// format change. See `docs/FamilyBeacon-Roster.md` for why that replay is
+    /// tolerated rather than prevented.
+    pub minted_at: String,
+}
+
 /// Exactly what a vouch signs.
 ///
 /// A view rather than a copy, so it cannot drift from the message it describes.

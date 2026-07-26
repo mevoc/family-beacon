@@ -225,6 +225,18 @@ roster is not deferrable to v0.2, because nothing works before it.
         because a family roster is small (tens of entries at most); there is no
         delta protocol and none is wanted.
 
+    channel_offer
+        of           the device whose inbox this addresses — the one that minted
+                     the queue and sealed the address. A claim; what proves it is
+                     that `sealed` decrypts under that device's session.
+        for          the device this offer is for. Anyone else drops it.
+        sealed       a session frame from `of` to `for`, carrying
+                     { sender_id, minted_at }. The relayer forwards bytes it
+                     cannot read.
+        Added July 2026 with the initiation-address relay (see Admission, step 5).
+        Plumbing rather than content, and like the three above it is not
+        consent-gated: a channel is the pipe, and the valve is consent.
+
 `member_info` (already a v1 type) continues to carry `display_name`,
 `member_group`, `role` and `proto_v` changes for an already-admitted device. It
 is not an admission path: a `member_info` from a device with no roster record is
@@ -271,13 +283,43 @@ tells P how to *encrypt* to J but not where to *send*, because sending needs a
 queue sender id that only the recipient can mint. So the introducer relays the
 addresses it is already positioned to relay:
 
-    5a. J mints one inbound queue per member in the roster M gave it, and sends
-        M the resulting sender ids over the channel from step 2.
-    5b. M forwards J's sender id for P to P, and P's sender id for J to J, over
-        the pair channels M already holds. Both hops are inside existing
-        sessions; no address ever crosses in the clear.
-    5c. P and J now hold each other's addresses and verified key material, and
-        the pair channel is live in both directions.
+    5a. J mints one inbound queue per member in the roster M gave it, and seals
+        each address to the member it belongs to — a session frame from J to P,
+        which M can carry and cannot read. It sends the sealed offers to M over
+        the channel from step 2.
+    5b. M forwards each offer to the member it names. M may only forward an
+        offer its own owner handed it, and only between two active members.
+    5c. P validates the offer against its roster, unseals it with **J's**
+        session, and can now reach J. It returns its own address the same way —
+        sealed, but sent **directly**, because the channel it just learned about
+        makes a second relay unnecessary. The pair is live in both directions.
+
+Three things about this are load-bearing (built July 2026; wire type
+`channel_offer`, implemented in `beacon-roster`'s `pairing` module):
+
+- **The address is sealed, so the introducer is a courier and not a party.** A
+  sender id is a capability, and Sund binds a queue's sender key to whoever writes
+  first — so a relayer that could read the address could bind the queue itself and
+  permanently break the pair it was introducing. That is a silent, persistent
+  denial of service by the one device a joiner has no choice but to trust.
+  Sealing costs one nested encryption and removes the class. Both ends already
+  hold each other's verified key material by this point, so nothing extra is
+  needed to do it.
+- **Only one direction is relayed.** The original sketch had M forwarding both
+  ways; it does not have to, because once P holds J's address it can reach J on
+  its own. Halving the relay halves what the introducer touches.
+- **A relayer forwards only an address its owner personally handed it.** Without
+  that rule the relay is a general-purpose forwarding primitive, and any member
+  could push arbitrary sealed payloads at any other using a third as the courier.
+
+What a relayer can still do is drop an offer, or replay an old one. Dropping is a
+visible failure — the join does not complete and the joiner can ask again.
+Replaying re-attaches a stale address, which surfaces as a retired-queue error on
+the next send and is repaired by a fresh exchange. `channel_offer` carries a
+`minted_at` inside the sealed part so a receiver could order offers and refuse an
+older one without a format change; nothing does that yet, deliberately — the
+failure is already loud and recoverable, and the attacker is a device that could
+equally just remove the victim from the family.
 
 The alternative was a published-bundle mesh — a sender id inside the bundle,
 making step 5 a bare "fetch and send". It was rejected because it makes every

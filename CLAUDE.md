@@ -13,9 +13,10 @@ protocol identity key, key bundles, canonical JSON, the vodozemac ratchet and it
 persistence), `beacon-roster` (the membership state machine: vouch-based
 admission, removal and tombstones, the churn budget, reconciliation and split
 detection) and `contract-tests` (tier 2, driving the real libraries against a
-real relay in both modes — including a leg where devices actually found a family
-and join it). Tiers 1 and 2 run in CI. Not yet written: the offline outbox, the
-initiation-address relay at join, the UniFFI bindings, and every app. `ARCHITECTURE.md` (the
+real relay in both modes — including a leg where devices actually found a family,
+join it, and are introduced to each other by a relayed sealed address). Tiers 1
+and 2 run in CI. Not yet written: the offline outbox, the UniFFI bindings, and
+every app. `ARCHITECTURE.md` (the
 founding vision doc) defines the shape; `core/README.md` maps what exists
 against what does not.
 Successor to `../family-beacon-android`, the original SMS-based peer-to-peer
@@ -290,8 +291,17 @@ police is honesty about residual metadata (Sund's threat model) — see #5.
      receiver's own standing and still requires a valid signature.
    Remaining open item in the spec: the founding device self-vouches, so whether a
    second device should co-sign the founding record is undecided. Not blocking.
-   Still unbuilt and blocking a real join flow: the initiation-address relay that
-   grant-only bundles require (spec'd as Admission steps 5a–5c).
+   **The initiation-address relay is built (July 2026)** — the piece grant-only
+   bundles made necessary, wire type `channel_offer`, in `beacon-roster`'s
+   `pairing` module. Three properties are load-bearing and were settled in the
+   building: the address is **sealed to its recipient**, so the introducer is a
+   courier who never holds the capability it is introducing (a relayer that could
+   read it could bind the queue's sender key first and permanently break the pair
+   it was introducing); only **one direction is relayed**, because once the peer
+   holds an address it can reply directly; and a relayer forwards **only an
+   address its owner personally handed it**, which is what stops the relay
+   becoming a general-purpose forwarding primitive. A relayer can still drop or
+   replay an offer — both loud and recoverable, documented in the spec.
 10. **Client build order — CLOSED (July 2026): Android first**, to a complete v1
    safety core, before iOS or web start. Rationale in ARCHITECTURE.md (Client
    platforms and build order): Android is the only platform where the whole stack

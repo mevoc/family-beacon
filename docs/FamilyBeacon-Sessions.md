@@ -341,10 +341,14 @@ Open items
    change and therefore a re-pair.
 2. **Multiple retained sessions per peer.** The accepted limitation above. Ledger
    evidence should decide it, not speculation.
-3. **The initiation-address relay.** Grant-only pushes it into the roster's
-   admission protocol, where it is now specified (`FamilyBeacon-Roster.md` →
-   Admission, steps 5a–5c) and not yet implemented. Blocking for a real join
-   flow, and it belongs to the roster state machine rather than to this layer.
+3. ~~The initiation-address relay.~~ **Built July 2026** in `beacon-roster`'s
+   `pairing` module (`FamilyBeacon-Roster.md` → Admission, step 5). It uses this
+   layer in a way worth noting here: the relayed address is *sealed* with an
+   ordinary session frame from its owner to its recipient, so the introducer
+   carries a capability it cannot read. That works only because both ends already
+   hold each other's verified key material by the time the relay runs — the vouch
+   put them in each other's rosters and their bundles are fetchable — so the
+   sealing needs no extra round trip and no new primitive.
 4. **Try mode's bundle distribution.** The format survives; the transport for it
    does not, because ntfy has no dead drop. A Try-mode open item, not a reason to
    reshape this — decision #8 sequences it after Sund mode works.
@@ -358,7 +362,7 @@ Related
 - `FamilyBeacon-Protocol.md` — the envelope this layer seals, and the layering
   this document sits inside.
 - `FamilyBeacon-Roster.md` — where `identity_pk` is vouched, and where the
-  initiation-address relay has to live.
+  initiation-address relay lives (it seals with this layer's sessions).
 - `FamilyBeacon-TryMode.md` — the second transport this layer must survive.
 - `FamilyBeacon-Testing.md` — the tiers, and the shared-vector discipline.
 - `../sund/docs/Sund-PRD.md` — key bundles, reachability, and the TTL clamp the

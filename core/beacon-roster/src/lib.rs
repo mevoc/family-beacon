@@ -60,17 +60,23 @@
 //! platform keeps data. Nor does it own a clock — every method that needs the time
 //! takes it as an argument, exactly as the layers below do.
 //!
-//! One thing it deliberately leaves to the caller: acting on a removal. When
+//! Two things it deliberately leaves to the caller. Acting on a removal: when
 //! [`roster::Removal::Applied`] comes back, the caller must retire its channels
-//! with that device and drop every grant naming it in both directions. The roster
-//! cannot do either — consent and transport are not its state — so the ledger
-//! entry is the record and the caller is the mechanism.
+//! with that device and drop every grant naming it in both directions. And
+//! executing a join: [`pairing`] decides who needs an address and whether an
+//! arriving one may be acted on, but it mints no queues and unseals nothing. The
+//! roster cannot do either — consent, transport and sessions are not its state —
+//! so the ledger entry is the record and the caller is the mechanism.
 
 pub mod churn;
+pub mod pairing;
 pub mod records;
 pub mod roster;
 
 pub use churn::{CHURN_WINDOW, ChurnLog, MAX_MEMBERSHIP_EVENTS_PER_DEVICE_PER_DAY};
+pub use pairing::{
+    AcceptedOffer, OfferRefusal, RelayRefusal, accept_offer, peers_needing_offers, relay_target,
+};
 pub use records::{DeviceRecord, SelfDescription, Tombstone};
 pub use roster::{
     Admission, Applied, HeldAdmission, MAX_ACTIVE_DEVICES, Removal, RemovalRefusal, Roster,

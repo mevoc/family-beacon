@@ -46,7 +46,10 @@
         "type": "battery",
         "sent": "2026-07-19T10:05:00Z",
         "sender": "dev_A",
-        "body": { "level_pct": 14, "charging": false }
+        "body": {
+          "level_pct": 14,
+          "charging": false
+        }
       }
     },
     {
@@ -62,7 +65,11 @@
         "sender": "dev_A",
         "body": {
           "recorded_at": "2026-07-19T10:06:30Z",
-          "last_location": { "lat": 56.0465, "lon": 12.6945, "accuracy_m": 30 },
+          "last_location": {
+            "lat": 56.0465,
+            "lon": 12.6945,
+            "accuracy_m": 30
+          },
           "note": "bike accident"
         }
       }
@@ -78,7 +85,9 @@
         "type": "sos_clear",
         "sent": "2026-07-19T10:21:02Z",
         "sender": "dev_A",
-        "body": { "of": "018f9a2c-0003" }
+        "body": {
+          "of": "018f9a2c-0003"
+        }
       }
     },
     {
@@ -92,7 +101,10 @@
         "type": "attention",
         "sent": "2026-07-19T17:40:00Z",
         "sender": "dev_B",
-        "body": { "reason": "call me when you can", "recorded_at": "2026-07-19T17:39:58Z" }
+        "body": {
+          "reason": "call me when you can",
+          "recorded_at": "2026-07-19T17:39:58Z"
+        }
       }
     },
     {
@@ -106,7 +118,11 @@
         "type": "geofence_event",
         "sent": "2026-07-19T15:02:11Z",
         "sender": "dev_C",
-        "body": { "fence_id": "school", "transition": "exit", "recorded_at": "2026-07-19T15:02:09Z" }
+        "body": {
+          "fence_id": "school",
+          "transition": "exit",
+          "recorded_at": "2026-07-19T15:02:09Z"
+        }
       }
     },
     {
@@ -120,7 +136,10 @@
         "type": "consent_update",
         "sent": "2026-07-19T18:00:00Z",
         "sender": "dev_A",
-        "body": { "feature": "location", "action": "revoke" }
+        "body": {
+          "feature": "location",
+          "action": "revoke"
+        }
       }
     },
     {
@@ -136,7 +155,11 @@
         "sender": "dev_A",
         "body": {
           "key": "fence.school",
-          "value": { "lat": 56.04, "lon": 12.69, "radius_m": 150 },
+          "value": {
+            "lat": 56.04,
+            "lon": 12.69,
+            "radius_m": 150
+          },
           "owner_rev": 3
         }
       }
@@ -152,7 +175,12 @@
         "type": "member_info",
         "sent": "2026-07-19T09:00:00Z",
         "sender": "dev_C",
-        "body": { "display_name": "Emma", "member_group": "emma", "role": "child", "proto_v": 1 }
+        "body": {
+          "display_name": "Emma",
+          "member_group": "emma",
+          "role": "child",
+          "proto_v": 1
+        }
       }
     },
     {
@@ -166,7 +194,12 @@
         "type": "roster_introduce",
         "sent": "2026-07-19T09:01:00Z",
         "sender": "dev_A",
-        "body": { "device_id": "dev_C", "vouched_by": "dev_A", "signature": "BASE64", "at": "2026-07-19T09:00:59Z" }
+        "body": {
+          "device_id": "dev_C",
+          "vouched_by": "dev_A",
+          "signature": "BASE64",
+          "at": "2026-07-19T09:00:59Z"
+        }
       }
     },
     {
@@ -180,7 +213,12 @@
         "type": "roster_remove",
         "sent": "2026-07-20T09:00:00Z",
         "sender": "dev_A",
-        "body": { "device_id": "dev_D", "removed_by": "dev_A", "signature": "BASE64", "at": "2026-07-20T08:59:59Z" }
+        "body": {
+          "device_id": "dev_D",
+          "removed_by": "dev_A",
+          "signature": "BASE64",
+          "at": "2026-07-20T08:59:59Z"
+        }
       }
     },
     {
@@ -194,7 +232,36 @@
         "type": "roster_sync",
         "sent": "2026-07-20T09:05:00Z",
         "sender": "dev_A",
-        "body": { "devices": ["dev_A", "dev_B", "dev_C"], "tombstones": ["dev_D"], "digest": "BASE64" }
+        "body": {
+          "devices": [
+            "dev_A",
+            "dev_B",
+            "dev_C"
+          ],
+          "tombstones": [
+            "dev_D"
+          ],
+          "digest": "BASE64"
+        }
+      }
+    },
+    {
+      "name": "channel_offer",
+      "expect": "accept",
+      "note": "The initiation-address relay of FamilyBeacon-Roster.md -> Admission. `sealed` is a session frame from `of` to `for`, so the relayer forwards bytes it cannot read; nothing here is the address itself.",
+      "authenticated_sender": "dev_A",
+      "envelope": {
+        "v": 1,
+        "id": "018f9a2c-0014",
+        "seq": 3,
+        "type": "channel_offer",
+        "sent": "2026-07-26T10:06:00Z",
+        "sender": "dev_A",
+        "body": {
+          "of": "dev_C",
+          "for": "dev_B",
+          "sealed": "AQBSZWxheWVkIGFkZHJlc3MsIHNlYWxlZCB0byBpdHMgcmVjaXBpZW50"
+        }
       }
     },
     {
@@ -208,7 +275,10 @@
         "type": "receipt",
         "sent": "2026-07-19T17:41:00Z",
         "sender": "dev_B",
-        "body": { "of": "018f9a2c-0005", "status": "suppressed" }
+        "body": {
+          "of": "018f9a2c-0005",
+          "status": "suppressed"
+        }
       }
     },
     {
@@ -223,7 +293,10 @@
         "type": "presence",
         "sent": "2026-07-19T17:45:00Z",
         "sender": "dev_B",
-        "body": { "state": "home", "since": "2026-07-19T17:10:00Z" }
+        "body": {
+          "state": "home",
+          "since": "2026-07-19T17:10:00Z"
+        }
       }
     },
     {
@@ -238,7 +311,11 @@
         "type": "battery",
         "sent": "2026-07-19T18:10:00Z",
         "sender": "dev_A",
-        "body": { "level_pct": 40, "charging": true, "cycle_count": 812 }
+        "body": {
+          "level_pct": 40,
+          "charging": true,
+          "cycle_count": 812
+        }
       }
     },
     {
@@ -269,7 +346,11 @@
         "type": "location",
         "sent": "2026-07-19T10:04:12Z",
         "sender": "dev_A",
-        "body": { "lat": 56.0, "lon": 12.0, "accuracy_m": 10 }
+        "body": {
+          "lat": 56.0,
+          "lon": 12.0,
+          "accuracy_m": 10
+        }
       }
     },
     {

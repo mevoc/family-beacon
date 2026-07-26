@@ -46,6 +46,13 @@ pub enum MessageType {
     RosterRemove,
     /// Periodic full-roster digest for reconciliation.
     RosterSync,
+    /// Hands a peer the queue address it needs to reach this device.
+    ///
+    /// Grant-only bundles carry no initiation address, so at join the addresses
+    /// are relayed by the introducer (`FamilyBeacon-Roster.md` → Admission).
+    /// Plumbing, not content: the address itself is sealed to its recipient, so
+    /// the relayer forwards bytes it cannot read.
+    ChannelOffer,
     /// Delivery/seen (and, for attention, suppression and reply) reporting.
     Receipt,
     /// A type this build does not know. Carries the wire string so the ledger
@@ -69,6 +76,7 @@ impl MessageType {
             Self::RosterIntroduce => "roster_introduce",
             Self::RosterRemove => "roster_remove",
             Self::RosterSync => "roster_sync",
+            Self::ChannelOffer => "channel_offer",
             Self::Receipt => "receipt",
             Self::Unknown(s) => s,
         }
@@ -95,6 +103,7 @@ impl From<&str> for MessageType {
             "roster_introduce" => Self::RosterIntroduce,
             "roster_remove" => Self::RosterRemove,
             "roster_sync" => Self::RosterSync,
+            "channel_offer" => Self::ChannelOffer,
             "receipt" => Self::Receipt,
             other => Self::Unknown(other.to_owned()),
         }

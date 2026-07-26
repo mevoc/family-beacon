@@ -17,6 +17,7 @@ sund-client = { path = "../sund-client" }
 # rather than asserting that ciphertext survives a round trip.
 beacon-protocol = { path = "../beacon-protocol" }
 beacon-roster = { path = "../beacon-roster" }
+base64 = { workspace = true }
 serde_json = { workspace = true }
 
 [lints]

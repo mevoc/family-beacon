@@ -170,6 +170,7 @@ checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
 name = "contract-tests"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "beacon-protocol",
  "beacon-roster",
  "serde_json",

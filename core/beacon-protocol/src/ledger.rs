@@ -134,6 +134,21 @@ pub enum LedgerEvent {
         /// The device on the other side of the split.
         counterpart: String,
     },
+    /// A pair channel became usable in one direction.
+    ///
+    /// Squarely inside the ledger's rule of thumb — it changes who can reach
+    /// you — and worth showing on its own: "Emma's phone can now reach you" is
+    /// the observable half of a join completing.
+    ChannelEstablished {
+        /// Whether this device can now *send* to the peer (as opposed to the
+        /// peer having been given the address to send here).
+        outbound: bool,
+    },
+    /// A channel offer was refused.
+    ChannelOfferRefused {
+        /// Why, in terms that can be shown.
+        reason: String,
+    },
     /// A peer changed one of its self-asserted labels.
     LabelsChanged {
         /// Which label: `display_name`, `member_group` or `role`.

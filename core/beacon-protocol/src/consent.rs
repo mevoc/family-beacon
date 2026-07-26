@@ -237,7 +237,8 @@ impl ConsentState {
             | MessageType::ConfigUpdate
             | MessageType::RosterIntroduce
             | MessageType::RosterRemove
-            | MessageType::RosterSync => SendDecision::Allow,
+            | MessageType::RosterSync
+            | MessageType::ChannelOffer => SendDecision::Allow,
 
             MessageType::Location => self.require_grant(Feature::Location, peer),
             MessageType::Battery => self.require_grant(Feature::Battery, peer),

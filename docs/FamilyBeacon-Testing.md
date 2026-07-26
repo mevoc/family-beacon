@@ -265,9 +265,10 @@ that can *join* a family rather than be wired together by test code. Both landed
 in July 2026 (`docs/FamilyBeacon-Sessions.md`, `docs/FamilyBeacon-Roster.md`),
 and the contract suite's `sessions` and `membership` legs already drive the whole
 stack end to end against a real relay: a family founded, a device vouched in and
-adopting the roster, bundles verified against the roster's `identity_pk`, an
-envelope sealed, carried by a real Sund queue and opened again, and a member
-evicted on both sides.
+adopting the roster, bundles verified against the roster's `identity_pk`, two
+members who have never met introduced by a third relaying a sealed address, an
+envelope carried by a real Sund queue and opened again, and a member evicted on
+both sides.
 
 What tier 3 adds on top is not new capability but *scale and adversity*: several
 headless clients running concurrently rather than a handful of devices driven

@@ -22,8 +22,11 @@
 
 use std::time::{Duration, SystemTime};
 
-use beacon_protocol::roster::RemovalReason;
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
+use beacon_protocol::roster::{ChannelAddress, ChannelOffer, RemovalReason, RosterIntroduce};
 use beacon_protocol::{Outcome, receive};
+use beacon_roster::pairing::{accept_offer, peers_needing_offers, relay_target};
 use beacon_roster::records::SelfDescription;
 use beacon_roster::roster::{Admission, Removal, Roster, ServerDevice, ServerFinding};
 use contract_tests::{Relay, TestDevice, channel_id, for_each_relay, seed};
@@ -118,7 +121,7 @@ fn found(relay: &Relay, seed_byte: u8) -> Member {
 /// Run the join ceremony: `introducer` vouches for a newly enrolled device, which
 /// adopts the introducer's roster. This is `docs/FamilyBeacon-Roster.md` →
 /// Admission, steps 1–2 and 6, with Sund's invitation standing in for the QR.
-fn join(relay: &Relay, introducer: &mut Member, seed_byte: u8) -> Member {
+fn join(relay: &Relay, introducer: &mut Member, seed_byte: u8) -> (Member, RosterIntroduce) {
     let (device, identity, sessions, transport) = enroll(relay, seed_byte);
     let description = SelfDescription {
         device_id: device.device_id().to_owned(),
@@ -177,16 +180,17 @@ fn join(relay: &Relay, introducer: &mut Member, seed_byte: u8) -> Member {
         transport,
     };
     member.publish();
-    member
+    (member, vouch)
 }
 
-/// Establish the duplex channel between two members and open sessions both ways.
+/// Pair two devices that are **physically co-present** — the QR case.
 ///
-/// The address exchange is the grant-only relay of
-/// `docs/FamilyBeacon-Roster.md` steps 5a–5c collapsed into test code: each side
-/// mints the queue it drains and the ids are handed over. What is *not* collapsed
-/// is the key verification — that goes through the roster.
-fn pair(a: &mut Member, b: &mut Member, channel: &ChannelId) {
+/// Handing the addresses over directly is legitimate here and only here: step 1
+/// of admission says co-presence is the authentication, and two people holding
+/// two phones can exchange anything. Every other pair in the family goes through
+/// the relay instead, which is
+/// [`a_third_member_is_paired_by_a_relayed_sealed_address`].
+fn pair_co_present(a: &mut Member, b: &mut Member, channel: &ChannelId) {
     a.transport.declare(channel, seed());
     a.transport.open(channel).expect("a's queue");
     b.transport.declare(channel, seed());
@@ -233,6 +237,75 @@ fn exchange(from: &mut Member, to: &mut Member, channel: &ChannelId, plaintext: 
     receive(&decrypted.plaintext, &decrypted.authenticated_sender).outcome
 }
 
+/// Mint an inbound queue for `peer` and return the address to hand over.
+fn mint_queue_for(owner: &mut Member, channel: &ChannelId) -> String {
+    owner.transport.declare(channel, seed());
+    owner.transport.open(channel).expect("mint the queue");
+    owner
+        .transport
+        .inbound(channel)
+        .expect("the ids of the queue just minted")
+        .sender_id
+}
+
+/// Seal an address to its recipient, producing the offer that carries it.
+///
+/// The sealing is what makes the relayer a courier: `sealed` is a session frame
+/// from the owner to the recipient, so whoever carries it cannot read the
+/// capability inside.
+fn seal_offer(owner: &mut Member, for_device: &str, sender_id: &str) -> ChannelOffer {
+    let address = ChannelAddress {
+        sender_id: sender_id.to_owned(),
+        minted_at: "2026-07-26T10:06:00Z".to_owned(),
+    };
+    let plaintext = serde_json::to_vec(&address).expect("serialise the address");
+    let frame = owner
+        .sessions
+        .encrypt(for_device, &plaintext)
+        .expect("seal to the recipient");
+    ChannelOffer {
+        of: owner.id(),
+        for_device: for_device.to_owned(),
+        sealed: BASE64.encode(frame),
+    }
+}
+
+/// Unseal an accepted offer, yielding the address inside.
+fn unseal_offer(recipient: &mut Member, owner: &str, offer: &ChannelOffer) -> String {
+    let frame = BASE64.decode(&offer.sealed).expect("base64");
+    let decrypted = recipient
+        .sessions
+        .decrypt(owner, &frame)
+        .expect("unseal with the owner's session");
+    assert_eq!(
+        decrypted.authenticated_sender, owner,
+        "the session is what turns the offer's `of` claim into a fact"
+    );
+    let address: ChannelAddress =
+        serde_json::from_slice(&decrypted.plaintext).expect("the address parses");
+    address.sender_id
+}
+
+/// Send one typed envelope and return the body the receiver accepted.
+fn hand_over(
+    from: &mut Member,
+    to: &mut Member,
+    channel: &ChannelId,
+    message_type: &str,
+    body: &serde_json::Value,
+    seq: u64,
+) -> serde_json::Value {
+    let sender = from.id();
+    let envelope = format!(
+        r#"{{"v":1,"id":"{message_type}-{seq}","seq":{seq},"type":"{message_type}",
+             "sent":"2026-07-26T10:06:00Z","sender":"{sender}","body":{body}}}"#
+    );
+    match exchange(from, to, channel, envelope.as_bytes()) {
+        Outcome::Accepted(envelope) => envelope.body,
+        other => panic!("expected Accepted, got {other:?}"),
+    }
+}
+
 fn member_info(sender: &str, seq: u64) -> Vec<u8> {
     format!(
         r#"{{"v":1,"id":"m-{seq}","seq":{seq},"type":"member_info",
@@ -246,7 +319,7 @@ fn member_info(sender: &str, seq: u64) -> Vec<u8> {
 fn a_family_forms_and_its_members_can_talk() {
     for_each_relay(|relay| {
         let mut alice = found(relay, 1);
-        let mut bob = join(relay, &mut alice, 2);
+        let (mut bob, _) = join(relay, &mut alice, 2);
 
         assert_eq!(alice.roster.active_count(), 2, "{}", relay.name);
         assert_eq!(bob.roster.active_count(), 2, "{}", relay.name);
@@ -262,7 +335,7 @@ fn a_family_forms_and_its_members_can_talk() {
         );
 
         let channel = channel_id("family-talk");
-        pair(&mut alice, &mut bob, &channel);
+        pair_co_present(&mut alice, &mut bob, &channel);
 
         let alice_id = alice.id();
         let outcome = exchange(&mut alice, &mut bob, &channel, &member_info(&alice_id, 1));
@@ -282,7 +355,7 @@ fn a_bundle_is_verified_against_the_roster_not_the_server() {
     // material a client will use.
     for_each_relay(|relay| {
         let mut alice = found(relay, 1);
-        let bob = join(relay, &mut alice, 2);
+        let (bob, _) = join(relay, &mut alice, 2);
 
         assert_eq!(
             alice.roster.identity_of(&bob.id()).expect("vouched key"),
@@ -310,7 +383,7 @@ fn an_enrolled_device_nobody_vouched_for_is_never_admitted() {
     // attack — the device is genuinely in the account, not merely claimed.
     for_each_relay(|relay| {
         let mut alice = found(relay, 1);
-        let bob = join(relay, &mut alice, 2);
+        let (bob, _) = join(relay, &mut alice, 2);
         let injected = relay.enroll();
 
         let listed: Vec<ServerDevice> = alice
@@ -374,9 +447,9 @@ fn a_third_member_is_admitted_on_a_vouch_carried_end_to_end() {
     // against the key Bob already holds for Alice.
     for_each_relay(|relay| {
         let mut alice = found(relay, 1);
-        let mut bob = join(relay, &mut alice, 2);
+        let (mut bob, _) = join(relay, &mut alice, 2);
         let channel = channel_id("vouch-broadcast");
-        pair(&mut alice, &mut bob, &channel);
+        pair_co_present(&mut alice, &mut bob, &channel);
 
         // Carol enrolls and Alice vouches for her.
         let (carol_device, carol_identity, _sessions, _transport) = enroll(relay, 3);
@@ -424,14 +497,202 @@ fn a_third_member_is_admitted_on_a_vouch_carried_end_to_end() {
 }
 
 #[test]
+fn a_third_member_is_paired_by_a_relayed_sealed_address() {
+    // The initiation-address relay, end to end, and the thing grant-only bundles
+    // made necessary: Bob and Carol have never been co-present, so neither can
+    // reach the other until Alice carries the first address across. What Alice
+    // carries is sealed, so she completes the introduction without ever holding
+    // the capability she is introducing.
+    for_each_relay(|relay| {
+        let mut alice = found(relay, 1);
+        let (mut bob, _) = join(relay, &mut alice, 2);
+        let ab = channel_id("relay-ab");
+        pair_co_present(&mut alice, &mut bob, &ab);
+
+        let (mut carol, carols_vouch) = join(relay, &mut alice, 3);
+        let ac = channel_id("relay-ac");
+        pair_co_present(&mut alice, &mut carol, &ac);
+
+        let (alice_id, bob_id, carol_id) = (alice.id(), bob.id(), carol.id());
+
+        // Step 3: Alice broadcasts Carol's vouch to Bob, who admits her without
+        // ever meeting her.
+        let body = serde_json::to_value(&carols_vouch).expect("serialise the vouch");
+        let carried = hand_over(&mut alice, &mut bob, &ab, "roster_introduce", &body, 1);
+        let carried: RosterIntroduce = serde_json::from_value(carried).expect("the vouch survived");
+        assert_eq!(
+            bob.roster
+                .receive_introduce(&carried, &alice_id, now())
+                .outcome,
+            Admission::Admitted,
+            "{}",
+            relay.name
+        );
+
+        // Both now hold each other's verified key material, and neither holds an
+        // address. That gap is exactly what the relay closes.
+        bob.learn(&carol_id);
+        carol.learn(&bob_id);
+        assert_eq!(
+            peers_needing_offers(&carol.roster, &[&alice_id]),
+            vec![bob_id.clone()],
+            "{}: Carol can reach Alice and nobody else",
+            relay.name
+        );
+
+        // Step 5a: Carol mints Bob's queue and seals its address to him.
+        let bc = channel_id("relay-bc");
+        let carols_address = mint_queue_for(&mut carol, &bc);
+        let offer = seal_offer(&mut carol, &bob_id, &carols_address);
+        assert!(
+            !String::from_utf8_lossy(&BASE64.decode(&offer.sealed).expect("base64"))
+                .contains(&carols_address),
+            "{}: the address must not be readable in the sealed blob",
+            relay.name
+        );
+
+        // Step 5b: Carol hands it to Alice, who is only a courier.
+        let body = serde_json::to_value(&offer).expect("serialise the offer");
+        let at_alice = hand_over(&mut carol, &mut alice, &ac, "channel_offer", &body, 2);
+        let at_alice: ChannelOffer = serde_json::from_value(at_alice).expect("the offer survived");
+        assert_eq!(
+            relay_target(&alice.roster, &at_alice, &carol_id).expect("relayable"),
+            bob_id,
+            "{}",
+            relay.name
+        );
+        let body = serde_json::to_value(&at_alice).expect("serialise");
+        let at_bob = hand_over(&mut alice, &mut bob, &ab, "channel_offer", &body, 3);
+        let at_bob: ChannelOffer = serde_json::from_value(at_bob).expect("the offer survived");
+
+        // Bob validates against his roster, unseals with *Carol's* session, and
+        // can now reach her.
+        let accepted = accept_offer(&bob.roster, &at_bob, &alice_id)
+            .outcome
+            .expect("accepted");
+        assert_eq!(accepted.owner, carol_id);
+        assert!(!accepted.direct, "{}: it came through Alice", relay.name);
+        let address = unseal_offer(&mut bob, &accepted.owner, &at_bob);
+        assert_eq!(
+            address, carols_address,
+            "{}: the address survived the relay intact",
+            relay.name
+        );
+        bob.transport.declare(&bc, seed());
+        bob.transport.open(&bc).expect("bob's own queue");
+        let bobs_address = bob
+            .transport
+            .inbound(&bc)
+            .expect("bob's ids")
+            .sender_id
+            .clone();
+        bob.transport
+            .attach_outbound(&bc, address, seed())
+            .expect("bob can now send to carol");
+
+        // Step 5c: the reply needs no relay. Bob returns his own address over the
+        // channel that now exists — which is why only one direction is ever
+        // carried by the introducer.
+        let reply = seal_offer(&mut bob, &carol_id, &bobs_address);
+        let body = serde_json::to_value(&reply).expect("serialise");
+        let at_carol = hand_over(&mut bob, &mut carol, &bc, "channel_offer", &body, 4);
+        let at_carol: ChannelOffer = serde_json::from_value(at_carol).expect("survived");
+        let accepted = accept_offer(&carol.roster, &at_carol, &bob_id)
+            .outcome
+            .expect("accepted");
+        assert!(
+            accepted.direct,
+            "{}: the reply came straight from its owner",
+            relay.name
+        );
+        let address = unseal_offer(&mut carol, &accepted.owner, &at_carol);
+        carol
+            .transport
+            .attach_outbound(&bc, address, seed())
+            .expect("carol can now send to bob");
+
+        // And two devices that have never met, introduced by a courier who never
+        // held either address, talk directly.
+        let outcome = exchange(&mut carol, &mut bob, &bc, &member_info(&carol_id, 5));
+        assert!(
+            matches!(outcome, Outcome::Accepted(_)),
+            "{}: {outcome:?}",
+            relay.name
+        );
+        let outcome = exchange(&mut bob, &mut carol, &bc, &member_info(&bob_id, 6));
+        assert!(
+            matches!(outcome, Outcome::Accepted(_)),
+            "{}: {outcome:?}",
+            relay.name
+        );
+
+        assert!(
+            peers_needing_offers(&carol.roster, &[&alice_id, &bob_id]).is_empty(),
+            "{}: the family is fully connected",
+            relay.name
+        );
+    });
+}
+
+#[test]
+fn a_relayer_will_not_forward_an_address_that_is_not_its_owners() {
+    // The rule that stops the relay becoming a general forwarding primitive,
+    // against a real family: Bob may hand Alice his own address, and may not use
+    // her as a courier for a payload he claims is Carol's.
+    for_each_relay(|relay| {
+        let mut alice = found(relay, 1);
+        let (mut bob, _) = join(relay, &mut alice, 2);
+        let ab = channel_id("relay-abuse-ab");
+        pair_co_present(&mut alice, &mut bob, &ab);
+        let (carol, carols_vouch) = join(relay, &mut alice, 3);
+        let (alice_id, bob_id, carol_id) = (alice.id(), bob.id(), carol.id());
+
+        let body = serde_json::to_value(&carols_vouch).expect("serialise");
+        let carried = hand_over(&mut alice, &mut bob, &ab, "roster_introduce", &body, 1);
+        let carried: RosterIntroduce = serde_json::from_value(carried).expect("survived");
+        bob.roster.receive_introduce(&carried, &alice_id, now());
+
+        // Bob forges an offer claiming to carry Carol's address.
+        let forged = ChannelOffer {
+            of: carol_id.clone(),
+            for_device: alice_id.clone(),
+            sealed: BASE64.encode(b"anything at all"),
+        };
+        assert!(
+            relay_target(&alice.roster, &forged, &bob_id).is_err(),
+            "{}: only an address's owner may hand it over",
+            relay.name
+        );
+
+        // And an offer addressed to Alice herself is hers to accept, not to
+        // forward — the two paths are disjoint by construction.
+        let own = ChannelOffer {
+            of: bob_id.clone(),
+            for_device: alice_id.clone(),
+            sealed: BASE64.encode(b"sealed"),
+        };
+        assert!(
+            relay_target(&alice.roster, &own, &bob_id).is_err(),
+            "{}",
+            relay.name
+        );
+        assert!(
+            accept_offer(&alice.roster, &own, &bob_id).outcome.is_ok(),
+            "{}: but it is acceptable",
+            relay.name
+        );
+    });
+}
+
+#[test]
 fn a_removal_travels_and_takes_the_server_side_with_it() {
     // The "stronger implementation" the layering promises: the tombstone is the
     // client-side half, and Sund's revoke is the half that locks the device out.
     for_each_relay(|relay| {
         let mut alice = found(relay, 1);
-        let mut bob = join(relay, &mut alice, 2);
+        let (mut bob, _) = join(relay, &mut alice, 2);
         let channel = channel_id("removal");
-        pair(&mut alice, &mut bob, &channel);
+        pair_co_present(&mut alice, &mut bob, &channel);
 
         // Alice removes Bob, locally and on the server.
         let removal = alice
@@ -514,7 +775,7 @@ fn a_removed_member_can_no_longer_be_learned_or_addressed() {
     // pairing path closes on its own rather than by a separate check.
     for_each_relay(|relay| {
         let mut alice = found(relay, 1);
-        let bob = join(relay, &mut alice, 2);
+        let (bob, _) = join(relay, &mut alice, 2);
 
         alice
             .roster
@@ -549,7 +810,7 @@ fn roster_state_survives_a_restart_beside_the_other_two_stores() {
     // against a relay so the sequence is the real one.
     for_each_relay(|relay| {
         let mut alice = found(relay, 1);
-        let bob = join(relay, &mut alice, 2);
+        let (bob, _) = join(relay, &mut alice, 2);
 
         let snapshot = alice.roster.export();
         let json = serde_json::to_vec(&snapshot).expect("serialises");

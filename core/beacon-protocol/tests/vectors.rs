@@ -131,6 +131,7 @@ fn the_corpus_covers_every_v1_type() {
         "roster_introduce",
         "roster_remove",
         "roster_sync",
+        "channel_offer",
         "receipt",
     ] {
         assert!(
