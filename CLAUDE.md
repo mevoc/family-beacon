@@ -12,12 +12,16 @@ port with its Sund implementation and an in-memory one, the session layer —
 protocol identity key, key bundles, canonical JSON, the vodozemac ratchet and its
 persistence — and the offline outbox), `beacon-roster` (the membership state machine: vouch-based
 admission, removal and tombstones, the churn budget, reconciliation and split
-detection) and `contract-tests` (tier 2, driving the real libraries against a
-real relay in both modes — including a leg where devices actually found a family,
-join it, and are introduced to each other by a relayed sealed address). Tiers 1
-and 2 run in CI. Not yet written: the UniFFI bindings, and every app. `ARCHITECTURE.md` (the
-founding vision doc) defines the shape; `core/README.md` maps what exists
-against what does not.
+detection), `beacon-client` (the facade of decision #11: the composition behind
+one `Client`, the versioned state blob, and one error enum for the app — slice
+0's surface only, so enrollment, persistence and the two membership views, with
+the pull paths held to slice 1) and `contract-tests` (tier 2, driving the real
+libraries against a real relay in both modes — including a leg where devices
+actually found a family, join it, and are introduced to each other by a relayed
+sealed address). Tiers 1 and 2 run in CI. Not yet written: the UniFFI bindings
+(`beacon-ffi`), and every app. `ARCHITECTURE.md` (the founding vision doc)
+defines the shape; `core/README.md` maps what exists against what does not, and
+`docs/FamilyBeacon-AndroidPlan.md` is the working plan for the Android client.
 Successor to `../family-beacon-android`, the original SMS-based peer-to-peer
 app, which is kept frozen as-is; port client code from it selectively (see
 below), but its SMS command layer is dead by design.
@@ -310,6 +314,34 @@ police is honesty about residual metadata (Sund's threat model) — see #5.
    starts); the client libraries must not become Android-shaped, which the shared
    test vectors and beaconsim (a third implementation, third language) are there
    to enforce; web is second and scoped as a companion first.
+11. **A facade crate under the bindings — CLOSED (July 2026): `beacon-client`,
+   with `beacon-ffi` over it.** The core had no orchestrator: the sequence that
+   decides whether a bundle is trusted — publish, fetch, verify against the
+   roster's vouched key, learn, open a channel, seal, send — existed only in
+   `contract-tests`. Binding UniFFI directly over the three libraries would have
+   moved that sequence into Kotlin, then Swift, then TypeScript, which is the
+   failure mode decision #6 rejected per-platform native to avoid. Fixed by the
+   decision, all specified in `docs/FamilyBeacon-AndroidPlan.md`:
+   - **Two crates, not one.** `beacon-client` stays pure Rust so tier 3 can drive
+     it headlessly; `beacon-ffi` is scaffolding and must contain no decision a
+     test could fail on.
+   - **Snapshot in, snapshot out — no callback interfaces across the FFI.**
+     Protocol state is one opaque blob, versioned in byte zero, refused rather
+     than guessed at if the version is unknown. The encoding behind that byte is
+     JSON. The ledger is deliberately *not* in the blob: it grows without bound
+     and the UI needs to query and page it, so entries come out as values and the
+     app appends them to Room.
+   - **Blocking, never async, never from the main thread.** The facade owns no
+     thread, no clock and no scheduler; time is an argument, as in every layer
+     below.
+   - **The pin-mismatch error keeps its own variant.** `ClientError::ServerIdentity`
+     must render as an identity failure, never as "no connection" — the pinning
+     contract §8.3 forbids making an intercepting network look like an absent
+     one. It is the only error in the app whose wording is a security property.
+   - **The app layer still holds exactly two seeds.** The session pickle key is
+     derived from the identity seed rather than being a third secret, which also
+     keeps the blob's session state encrypted under a key that never leaves the
+     keystore.
 
 ## Porting from family-beacon-android
 

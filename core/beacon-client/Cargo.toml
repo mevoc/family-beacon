@@ -1,0 +1,35 @@
+[package]
+name = "beacon-client"
+version = "0.1.0"
+description = "The Family Beacon client composed: identity, roster, sessions, transport and outbox driven as one object"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# The three layers this crate composes. Nothing new is decided here — every
+# policy still belongs to the crate that owns it (docs/FamilyBeacon-AndroidPlan.md
+# → The facade crate: "what it must not own").
+beacon-protocol = { path = "../beacon-protocol" }
+beacon-roster = { path = "../beacon-roster" }
+sund-client = { path = "../sund-client", default-features = false }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+
+# The platform RNG, for seed generation. The only entropy this crate takes: every
+# other random value in the stack is passed in (queue seeds) or produced by
+# vodozemac.
+getrandom = "0.4"
+
+[features]
+default = ["agent"]
+# The shipping HTTP client, from sund-client. Off for wasm, where the web client
+# supplies its own `HttpClient` and constructs a `Client` through the `*_with`
+# constructors instead.
+agent = ["sund-client/agent"]
+
+[lints]
+workspace = true

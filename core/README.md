@@ -7,6 +7,10 @@ biometrics and local storage stay native per platform.
 
     Family Beacon apps        native per platform — not in this workspace
     ─────────────────────────────────────────────────────────────────
+    beacon-ffi                uniffi scaffolding; cdylib, no logic — not built
+    ─────────────────────────────────────────────────────────────────
+    beacon-client             the composition, driven as one `Client`
+    ─────────────────────────────────────────────────────────────────
     beacon-protocol           envelope codec, message types, consent, ledger
     ─────────────────────────────────────────────────────────────────
     beacon-roster             membership, introductions, revocation policy
@@ -34,6 +38,7 @@ one, it is in the wrong crate.
 
 | Crate | Contents |
 | --- | --- |
+| `beacon-client` | The composition of `docs/FamilyBeacon-AndroidPlan.md` → The facade crate: identity, roster, sessions, transport and outbox behind one `Client`, the versioned state blob (`open` from bytes, `snapshot` back to bytes), and one error enum the app switches on. Slice 0's surface: enrollment, persistence, and the two membership views. Pure Rust — `beacon-ffi` sits above it and is not built yet. |
 | `beacon-protocol` | Envelope codec and the v1 message-type registry, the consent state machine, the transparency ledger's vocabulary, and the receive path that binds an outcome to its ledger entry. |
 | `sund-client` | The canonical signed-request form (`sigauth`), server addresses and both transport-trust modes (`address`, `agent`), the two-plane API client (`client`), the transport port and its Sund implementation (`transport`, `sund_transport`), an in-memory implementation of the port for tests, the offline outbox (`outbox`), and the session layer: the protocol identity key and its signing domains (`identity`), canonical JSON (`canonical`), the grant-only key bundle (`bundle`), the vodozemac ratchet (`session`) and its persistence (`session_store`). |
 | `beacon-roster` | The membership state machine of `docs/FamilyBeacon-Roster.md`: device records and tombstones, vouch-based admission, removal, the churn budget, `roster_sync` merging, server-list reconciliation, mutual-eviction detection, and the initiation-address relay that grant-only bundles require. Depends on `beacon-protocol` for the wire types and on `sund-client` for identity keys and canonical JSON — no HTTP client comes with it. |
@@ -77,12 +82,34 @@ Three more, added with the session layer and the outbox:
   cost is that the outbox snapshot holds message bodies in the clear — store it
   where the platform keeps sensitive state, not in a cache directory.
 
+Three more, added with `beacon-client`:
+
+- **The facade holds no thread, no clock and no scheduler.** Every method that
+  needs the time takes it as an argument, exactly as the layers below do, and
+  nothing is async or callback-shaped. The core is driven from WorkManager and
+  BGTask; it never assumes it may run whenever it likes.
+- **Two lists stay two calls.** `Client::roster()` answers "who did the family
+  vouch for" from local state with no request; `Client::server_devices()` answers
+  "what does Sund list" and marks each row `vouched` or not. Merging them would
+  be the injected-device bug with a convenient name.
+- **A pin mismatch has its own error variant, and its own sentence.**
+  `ClientError::ServerIdentity` is never rendered as a connectivity failure —
+  `is_server_identity()` exists so that check cannot be written as a string
+  match. It is the only error in the app whose wording is a security property
+  (pinning contract §8.3).
+
 ## What is not here yet
 
-- **UniFFI bindings.** Deliberately absent until there is an app-facing API
-  worth binding — they cost NDK cross-compilation, xcframework packaging and
-  wasm-pack in CI, and none of that is needed for tiers 1–3, which are
-  host-native. They arrive with the first Android integration.
+- **UniFFI bindings (`beacon-ffi`).** Still absent, and the split is deliberate:
+  `beacon-client` stays pure Rust so tier 3 can drive it headlessly, and
+  `beacon-ffi` is to contain no decision a test could fail on. They cost NDK
+  cross-compilation, xcframework packaging and wasm-pack in CI, none of which
+  tiers 1–3 need. Next up in slice 0.
+- **The pull paths.** `beacon-client` has no `drain()` or `pump_outbox()` yet;
+  both wait on slice 1, for reasons recorded in that crate's `lib.rs` and in
+  `docs/FamilyBeacon-AndroidPlan.md` → The API surface. The composition already
+  holds and persists sessions, channels and the outbox, so they arrive as
+  methods rather than as new state.
 
 ## Building
 

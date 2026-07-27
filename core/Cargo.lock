@@ -51,6 +51,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
+name = "beacon-client"
+version = "0.1.0"
+dependencies = [
+ "beacon-protocol",
+ "beacon-roster",
+ "getrandom 0.4.3",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sund-client",
+]
+
+[[package]]
 name = "beacon-protocol"
 version = "0.1.0"
 dependencies = [

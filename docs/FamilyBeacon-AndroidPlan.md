@@ -95,10 +95,21 @@ Two crates rather than one, so that `beacon-client` stays pure Rust and can be
 driven headlessly by tier 3 without going through a binding. `beacon-ffi` should
 contain no decision a test could fail on.
 
-(Name is a proposal. `beacon-client` reads as the Family Beacon client composed,
-next to `sund-client` as the Sund client composed. Settle it before the first
-commit — renaming a crate that a Gradle build and a CI job already reference is
-tedious.)
+**Names settled (July 2026): `beacon-client` and `beacon-ffi`, as proposed.**
+`beacon-client` reads as the Family Beacon client composed, next to `sund-client`
+as the Sund client composed, and the `beacon-` prefix already means
+"Family-Beacon-specific" across the workspace. The one ambiguity considered and
+accepted: by analogy with `sund-client` the name could be read as "client of a
+server called Beacon", and there is no such server — but "the Beacon client" is
+what the app-side composition is called in every other sentence about it, so the
+everyday reading is the right one. `beacon-core` was rejected because the
+workspace directory is already `core/`, and `core/beacon-core` names the same
+thing twice. Fix the cdylib's `[lib] name` explicitly in `beacon-ffi`'s manifest
+when it lands, so the `.so` the Gradle build and `System.loadLibrary` reference
+cannot drift from the crate name.
+
+`beacon-client` was built in July 2026 to slice 0's surface; see below for what
+that surface is and what it deliberately excludes.
 
 What the facade owns:
 
@@ -131,7 +142,9 @@ boundary follows the shape it already has:
 - **The blob is versioned from the first byte.** A schema integer at the front,
   and an `open` that refuses a version it does not know rather than guessing.
   This is the field-upgrade path; adding it later means a migration for devices
-  that already hold state.
+  that already hold state. **Built literally**: byte zero is the version and the
+  encoding starts at byte one, so the version is readable without committing to
+  an encoding — which is what makes open question 2 reversible.
 - **Ledger entries come out as values.** The receive path returns an outcome and
   a ledger entry together, deliberately and with no way to get one without the
   other, so the facade hands entries to the app and the app appends them to Room.
@@ -141,7 +154,12 @@ boundary follows the shape it already has:
 - **Seeds live in the platform keystore, not in the blob.** Two of them
   (`sigauth::DeviceKey` and `identity::IdentityKey`), generated at first run,
   passed into `open`. The app layer storing both is stated in `core/README.md`
-  as a requirement on the app; this is where it lands.
+  as a requirement on the app; this is where it lands. It stays at **two**: the
+  session layer's pickle key is *derived* from the identity seed, domain-
+  separated, rather than being a third secret whose loss would be silently
+  unrecoverable. That also means the pickles inside the blob stay encrypted under
+  a key that never leaves the keystore, so a blob that escapes the platform's
+  at-rest encryption still yields no session state.
 - **The blob is encrypted at rest.** Non-negotiable in slice 0 rather than later:
   the outbox holds message bodies in the clear by design (it seals at drain, not
   at enqueue), so the snapshot contains plaintext locations. `core/README.md`
@@ -182,6 +200,38 @@ it:
 `server_devices()` and `roster()` being two calls is the roster spec's central
 claim made visible in the type system. A single `members()` that quietly merged
 them would be the injected-device bug with a convenient name.
+
+**What was built (July 2026), and how it differs from the cut above.** The
+differences are all refinements the cut invited, not reversals:
+
+- `enroll` returns `Applied<Client>` — the client *and* the ledger entries
+  founding produced — rather than an `Enrolled`. Founding is a membership event,
+  the ledger rule has no exemptions, and `Applied<T>` is the shape
+  `beacon-roster` already uses for exactly this. Every future mutating call
+  returns one, so the app cannot obtain an outcome without also obtaining the
+  entries.
+- `enroll` takes a `Profile` (`display_name`, `member_group`, `role`) rather than
+  a display name alone. `Roster::found` needs all three, and defaulting the other
+  two inside the facade would be inventing membership policy in the one crate
+  that must not hold any.
+- Every constructor has an `_with` twin taking an `HttpClient` and a
+  `StampSource`. The `agent`-feature ones build the shipping pinned client; the
+  twins are what the web client and the unit tests use.
+- `open` reads the server address out of the blob rather than taking it again.
+  The trust mode is part of the server's stored identity, and a client that
+  accepted the address afresh on every open could be walked from pinned to WebPKI
+  without anyone re-pairing.
+- **`drain()` and `pump_outbox()` are held to slice 1**, both for reasons that
+  are about correctness rather than effort. `drain` needs a channel-to-peer
+  binding to know whose session decrypts a delivery, and `ChannelRecord`
+  deliberately carries no peer — the pairing ceremony is what establishes that
+  binding, so it is pairing's state to define, and building it now would be
+  designing the pairing flow ahead of it. `pump_outbox` is worse: `DrainReport`
+  carries no plaintext, so a drain cannot name the message type that went out,
+  and a send path that cannot produce `LedgerEvent::Sent` would put an exemption
+  in the ledger rule on day one. It lands with the enqueue path that knows the
+  type. The composition already holds and persists sessions, channels and the
+  outbox, so both are added as methods, not as fields.
 
 The error model carries one hard requirement. `sund-client`'s
 `agent::is_tls_failure` exists because rustls surfaces a pin mismatch as an
@@ -277,9 +327,16 @@ host has KVM, and it runs `-no-window` with screenshots pulled via
 
 Open questions for slice 0
 
-1. Crate naming (`beacon-client` / `beacon-ffi`), settled before first commit.
-2. Snapshot encoding — JSON is legible and diffable in tests; a compact binary
-   encoding is smaller. Legibility probably wins at this size, but decide once.
+1. ~~Crate naming (`beacon-client` / `beacon-ffi`), settled before first commit.~~
+   **Closed (July 2026): as proposed.** Reasoning above, under The facade crate.
+2. ~~Snapshot encoding.~~ **Closed (July 2026): JSON, behind the version byte.**
+   Every layer already exports a serde-serialisable snapshot and `serde_json` is
+   already a workspace dependency, so JSON costs nothing to adopt and buys a blob
+   that is legible in a test failure and diffable between two devices that
+   disagree about the family. The bytes a compact encoding would save are bytes
+   nobody is paying for at this size. Because the version sits *outside* the
+   encoding, changing this later is a version bump rather than a format sniff —
+   which is the whole reason the version byte is where it is.
 3. minSdk. The predecessor's floor is a starting point, but background-location
    behaviour differs enough across versions that the floor is a testing cost, not
    just a compatibility one.
