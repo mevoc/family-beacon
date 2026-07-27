@@ -1,6 +1,6 @@
 name: CI
 
-# Three jobs, from the tiers in docs/FamilyBeacon-Testing.md:
+# Four jobs, from the tiers in docs/FamilyBeacon-Testing.md:
 #
 #   core      tier 1 — the Rust core's unit suite and the shared test vectors.
 #             No server, no network, milliseconds.
@@ -9,9 +9,16 @@ name: CI
 #             repo and ../sund, which is why it runs per-commit.
 #   topology  tier 4's deployment half — profile B stood up for real against a
 #             published ghcr.io/mevoc/sund image, pulled anonymously.
+#   android   the Android client's build: the core cross-compiled, the UniFFI
+#             bindings generated from the resulting .so, an APK assembled and
+#             the app's JVM tests run across the real FFI boundary.
 #
 # Tier 3 (system) is not here yet: it needs the session crypto and the roster
 # state machine, i.e. clients that can hold a conversation rather than a queue.
+#
+# Tier 4's *instrumented* half — background location, doze, the sharing
+# indicator, UnifiedPush wake — joins the nightly tier when slice 3 gives it
+# something to assert. It needs an emulator, and it is not here yet.
 
 on:
   push:
@@ -322,3 +329,90 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose $COMPOSE down -v
+
+  android:
+    name: Android client
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # The slowest job in the file, and deliberately kept that way: one ABI, no
+    # emulator, no release build. Every extra ABI is another full cross-compile
+    # of vodozemac, rustls and ring.
+    env:
+      BEACON_NDK: "28.2.13676358"
+      BEACON_ABI: arm64-v8a
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          # The one ABI this job builds. The x86_64 target is for the emulator
+          # and only earns its keep once tier 4's instrumented half exists.
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+          # Distinct from the `core` job's cache: this one holds Android
+          # artefacts and the uniffi-bindgen build, and sharing a key would have
+          # each job evicting the other's.
+          key: android
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install the pinned NDK
+        # Pinned to the same version as apps/android/app/build.gradle.kts, which
+        # also hands it to cargo-ndk. An NDK bump that silently changes the API
+        # level is a bad afternoon; two pins that disagree is a worse one, so a
+        # bump changes both lines or neither.
+        run: sdkmanager --install "ndk;$BEACON_NDK" "platforms;android-37.1" "build-tools;37.0.0"
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --version 4.1.2 --locked
+
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          # The wrapper jar is a binary committed to this repo, and a tampered
+          # one executes with the build's privileges. Checking it against the
+          # published checksums is the cheapest supply-chain control available
+          # here, and it complements the distribution checksum the wrapper
+          # itself verifies.
+          validate-wrappers: true
+
+      - name: Assemble the debug APK
+        # Runs the whole chain: cargo-ndk cross-compiles beacon-ffi, the
+        # bindgen binary target generates Kotlin from the resulting .so, and AGP
+        # compiles the app against it.
+        working-directory: apps/android
+        run: ./gradlew assembleDebug -Pbeacon.abis=$BEACON_ABI --no-daemon
+
+      - name: Assert the APK carries the core
+        # Cheap, and it catches the failure mode a green `assembleDebug` hides:
+        # a build whose jniLibs wiring silently produced nothing still assembles,
+        # and the app then dies at first call with UnsatisfiedLinkError.
+        working-directory: apps/android
+        run: |
+          set -euo pipefail
+          apk=app/build/outputs/apk/debug/app-debug.apk
+          unzip -l "$apk" | grep -q "lib/$BEACON_ABI/libbeacon_ffi.so"
+          echo "ok    the APK contains lib/$BEACON_ABI/libbeacon_ffi.so"
+
+      - name: JVM unit tests
+        # These load the *host* build of beacon-ffi through UniFFI's
+        # library-override hook, so they cross the real FFI boundary rather than
+        # asserting that generated Kotlin compiles.
+        working-directory: apps/android
+        run: ./gradlew test -Pbeacon.abis=$BEACON_ABI --no-daemon
+
+      - name: Diagnostics
+        if: failure()
+        working-directory: apps/android
+        run: |
+          find app/build/reports -name "*.html" -print 2>/dev/null || true
+          cat app/build/reports/tests/testDebugUnitTest/index.html 2>/dev/null || true

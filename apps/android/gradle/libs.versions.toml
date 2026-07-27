@@ -1,0 +1,22 @@
+# Every version the Android build depends on, in one place.
+#
+# The Rust side is pinned elsewhere and deliberately so: the NDK in
+# `app/build.gradle.kts` (it is passed to cargo-ndk as well as to AGP, so one pin
+# governs both halves), and the `uniffi` version in `core/beacon-ffi/Cargo.toml`
+# (the generator is a binary target in that workspace, so it cannot drift from
+# the runtime it generates for).
+
+[versions]
+agp = "9.3.1"
+# JNA is what the generated UniFFI bindings call through. The Android build needs
+# the `@aar` artifact, which carries the native JNA dispatcher for each ABI; the
+# JVM unit tests need the ordinary jar for the host.
+jna = "5.19.1"
+junit = "4.13.2"
+
+[libraries]
+jna = { group = "net.java.dev.jna", name = "jna", version.ref = "jna" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+
+[plugins]
+androidApplication = { id = "com.android.application", version.ref = "agp" }

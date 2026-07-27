@@ -291,6 +291,53 @@ The `core` CI job now compiles `uniffi` and its bindgen dependency tree, which i
 a real slowdown on a job that was previously fast. Worth watching; not worth
 splitting the job over yet.
 
+**The Gradle build and the `android` job were wired in July 2026** and the whole
+chain is verified end to end: cargo-ndk cross-compiles `beacon-ffi`,
+`uniffi-bindgen` generates Kotlin from the resulting `.so`, AGP compiles the app
+against it, and `./gradlew assembleDebug` produces an APK carrying
+`lib/arm64-v8a/libbeacon_ffi.so` and `lib/x86_64/libbeacon_ffi.so`. Both pins are
+readable in the shipped artifact: the `.so`'s `.note.android.ident` records API
+level 29 and NDK `r28c`/13676358.
+
+Toolchain versions the bring-up settled, none of which were free choices:
+
+| Component | Version | Why this one |
+|---|---|---|
+| AGP | 9.3.1 | The line that supports `compileSdk 37`, which is the platform the host has |
+| Gradle | 9.5.0 | AGP 9.3.1's own floor — its version check refuses anything older |
+| Kotlin | AGP's built-in | **`org.jetbrains.kotlin.android` must not be applied.** AGP 9 carries Kotlin support itself and applying the separate plugin is an error, not a redundancy. One fewer version to keep in step |
+| JNA | 5.19.1 | What the generated bindings call through: `@aar` for the app, the plain jar for the JVM tests |
+
+Four things the build wiring learned that are cheaper to read than to rediscover:
+
+- **`cargo-ndk`'s platform flag is `-P`, not `-p`** — lowercase is cargo's own
+  `--package`, and passing it makes cargo-ndk panic rather than complain. Its
+  default is API **21**, eight levels below this app's floor, so passing it is
+  not optional: a `.so` built against a different API level than the manifest
+  claims fails on the oldest device anybody tests on, which is the last one to
+  get tested.
+- **AGP 9 removed `android.ndkDirectory` and replaced source-set `srcDir` with
+  `directories`.** The NDK path is now built from the pin by hand, which is
+  better than it sounds: the pin governs the Rust cross-compile directly instead
+  of by way of whatever AGP resolved, and a missing NDK fails with the
+  `sdkmanager` line to fix it rather than silently falling back to
+  `$ANDROID_NDK_HOME`.
+- **In a Gradle Kotlin DSL script, `java` resolves to the `JavaPluginExtension`,
+  so `java.util.Properties` does not.** Import it.
+- **The Rust `Display` impl does not cross the FFI.** UniFFI generates
+  `message` as `"detail=…"`, so the *variant* is all the app can key off, and
+  every user-facing sentence — including the pin-mismatch one, which is a
+  security property — has to be written in Kotlin and localised there. That
+  sharpens rather than weakens the error-model requirement: the reason
+  `ServerIdentity` must stay a distinct variant is that it is the only thing the
+  UI can dispatch on.
+
+The `android` job holds to one ABI (`arm64-v8a`) and no emulator, per the plan
+above. It additionally asserts that the APK actually contains
+`libbeacon_ffi.so` — a build whose `jniLibs` wiring silently produced nothing
+still assembles green, and the app then dies at first call with
+`UnsatisfiedLinkError`. `setup-gradle` validates the committed wrapper jar.
+
 CI gets a fourth job alongside `core`, `contract` and `topology`:
 
 - **`android`** — installs the NDK, builds the core for one ABI, generates the
@@ -366,9 +413,18 @@ Open questions for slice 0
    nobody is paying for at this size. Because the version sits *outside* the
    encoding, changing this later is a version bump rather than a format sniff —
    which is the whole reason the version byte is where it is.
-3. minSdk. The predecessor's floor is a starting point, but background-location
-   behaviour differs enough across versions that the floor is a testing cost, not
-   just a compatibility one.
+3. ~~minSdk.~~ **Closed (July 2026): 29 (Android 10).** Not the predecessor's 24.
+   The deciding line is `ACCESS_BACKGROUND_LOCATION`, which does not exist below
+   29: a lower floor means *two* background-location models to write, test and
+   reason about, and slice 3's doze and OEM-battery-killer matrix doubles with
+   it. The ethical argument points the same way — below 29 an app holds location
+   with no notion of "background" at all, and "Allow all the time" as a
+   deliberate settings-level grant is a transparency guarantee this product wants
+   rather than a restriction it tolerates. Android 10 is seven years old in 2026;
+   the cost is a tail of very old hardware. Still branching above the floor: 30
+   (the background grant moves out of the app), 31 (approximate/precise,
+   `PendingIntent` mutability), 33 (`POST_NOTIFICATIONS`), 34 (foreground service
+   types).
 4. Whether the app's Room schema is introduced in slice 0 (for the ledger) or the
    ledger is held in memory until slice 2. Leaning: introduce it in slice 0 —
    the ledger is the one thing slice 0 displays, and an in-memory stand-in would

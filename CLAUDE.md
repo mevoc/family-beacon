@@ -20,8 +20,10 @@ libraries against a real relay in both modes — including a leg where devices
 actually found a family, join it, and are introduced to each other by a relayed
 sealed address), and `beacon-ffi` (UniFFI 0.32 scaffolding over the facade:
 mirror types, one exported object, the `uniffi-bindgen` binary target; the
-cdylib cross-compiles to both Android ABIs and generates Kotlin). Tiers 1 and 2
-run in CI. Not yet written: the Gradle build, and every app.
+cdylib cross-compiles to both Android ABIs and generates Kotlin). `apps/android`
+holds the Gradle build — cargo-ndk, bindings generation and an APK carrying the
+core, with JVM tests that cross the real FFI — but **no app yet**: no activity,
+no screens. Tiers 1 and 2 plus an `android` build job run in CI.
 `ARCHITECTURE.md` (the founding vision doc)
 defines the shape; `core/README.md` maps what exists against what does not, and
 `docs/FamilyBeacon-AndroidPlan.md` is the working plan for the Android client.

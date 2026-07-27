@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Slice 0's manifest, and no more than that.
+
+  There is no activity yet: the app layer's first screens land with the slice
+  that specifies them, and a placeholder UI would be thrown away. What this
+  manifest establishes is the permission floor, which is deliberately one line
+  long — every capability this app acquires is opt-in per feature and arrives
+  with the feature that needs it, never ahead of it.
+
+  Not here, and not by omission:
+    ACCESS_FINE_LOCATION / ACCESS_BACKGROUND_LOCATION   slice 3
+    POST_NOTIFICATIONS                                  slice 4
+    FOREGROUND_SERVICE / FOREGROUND_SERVICE_LOCATION    slice 3
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Reaching the family's own server. Nothing else is contacted: there is
+         no analytics, no crash reporter and no third party in the data path. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application
+        android:allowBackup="false"
+        android:label="Family Beacon"
+        android:supportsRtl="true">
+        <!--
+          allowBackup is false and stays false. The state blob holds queued
+          message bodies in the clear (the outbox seals at drain, not at
+          enqueue), and cloud backup would put them somewhere neither the family
+          nor this app controls.
+        -->
+    </application>
+
+</manifest>
