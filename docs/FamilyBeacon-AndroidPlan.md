@@ -225,22 +225,53 @@ CI gets a fourth job alongside `core`, `contract` and `topology`:
 
 Prerequisites on the development host
 
-Present already: Rust 1.97.1, Docker 29.6.2 with Compose v5.3.1 (so the Sund
-stack can be brought up locally exactly as CI does it).
+The build host is a headless Ubuntu 24.04 server reached over SSH, so there is
+no Android Studio in the loop: the SDK is installed with `cmdline-tools` and
+everything below is command-line. Studio, if it is ever wanted for the layout
+inspector or the profiler, belongs on a workstation pointed at a phone — never
+on the build host.
 
-To install:
+Installed and verified (July 2026):
 
-- A JDK — whatever the Android Gradle Plugin in use supports; take the one
-  Android Studio bundles rather than picking independently.
-- Android Studio, or the command-line SDK tools plus the NDK. Studio is worth it
-  from slice 1 on (layout inspector, emulator management, profiler).
-- `rustup target add aarch64-linux-android x86_64-linux-android`
-- `cargo install cargo-ndk`
-- Membership of the `kvm` group for a hardware-accelerated emulator, and `adb`
-  access to a physical device (udev rules).
+| Component | Version |
+|---|---|
+| Rust | 1.97.1, with `aarch64-linux-android` and `x86_64-linux-android` |
+| cargo-ndk | 4.1.2 |
+| JDK | OpenJDK 21.0.11 (headless) |
+| cmdline-tools | 22.0 |
+| SDK Platform | `platforms;android-37.1` |
+| Build-Tools | `build-tools;37.0.0` |
+| Platform-Tools | 37.0.0 (adb 1.0.41) |
+| **NDK** | **`ndk;28.2.13676358`** — the pin for `build.gradle.kts` |
+| Docker | 29.6.2, Compose v5.3.1 (stands the Sund stack up as CI does) |
+
+`ANDROID_HOME`, `ANDROID_SDK_ROOT`, `ANDROID_NDK_HOME` and the two PATH entries
+are exported from `~/.bashrc`. Note that a non-interactive shell does not read
+it, so CI and any tooling that shells out must set them explicitly.
+
+On the NDK choice: r29.0.14206865 is also stable, but the r28 line has three
+patch releases behind it and is what the Rust Android toolchain has been most
+exercised against. Bumping is one `sdkmanager` call and one line in the Gradle
+build; starting on the mature line removes a variable from the first bring-up.
+Verified by cross-compiling `sund-client` — rustls, ring, vodozemac,
+ed25519-dalek and x25519-dalek all build clean for both ABIs.
+
+One caution about the tooling itself: `sdkmanager` is deprecated in
+cmdline-tools 22.0 in favour of an `android` CLI that collects usage metrics by
+default (`--no-metrics` opts out). Prefer `sdkmanager` while it lasts, and if
+the new CLI ends up in CI, pass the flag.
 
 Two physical phones are needed from slice 1 — the pairing ceremony is physical
-co-presence, and an emulator pair does not exercise the part that matters.
+co-presence, and an emulator pair does not exercise the part that matters. With
+the host headless, they reach it over the tailnet rather than over USB: enable
+wireless debugging on the phone and `adb pair` / `adb connect` to its Tailscale
+address. The pairing step is normally discovered over mDNS, which does not cross
+a tailnet, so it has to be done by explicit address — worth proving out before
+slice 1 depends on it.
+
+An emulator is not needed until tier 4's instrumented tests. When it is, the
+host has KVM, and it runs `-no-window` with screenshots pulled via
+`adb exec-out screencap`.
 
 ---
 
