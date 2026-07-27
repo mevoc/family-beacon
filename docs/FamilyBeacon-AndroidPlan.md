@@ -262,6 +262,35 @@ Native build:
 - Generated Kotlin goes into a build-directory source set and is **not**
   committed. Committed bindings rot against the Rust they claim to bind.
 
+`beacon-ffi` was built in July 2026 against **uniffi 0.32**, proc-macro mode with
+no UDL, and both halves are proven: the cdylib cross-compiles to `arm64-v8a` and
+`x86_64` under the pinned NDK, and `uniffi-bindgen` generates Kotlin from the
+Android `.so` — which is the invocation the Gradle task will use. Four decisions
+came out of the building, all cheap to reverse now and awkward later:
+
+- **`[lib] name = "beacon_ffi"` is fixed in the manifest**, not derived from the
+  package name. The Gradle copy and `System.loadLibrary` both depend on it, so a
+  rename Cargo would treat as cosmetic is an `UnsatisfiedLinkError` at app start.
+- **Mirror types, not re-exports.** Everything crossing the boundary is
+  redeclared in `beacon-ffi` with a total `From` conversion. That keeps `uniffi`
+  out of `beacon-client`'s dependency tree, gives the unbindable shapes
+  (`[u8; 32]`, `&'static str`, `usize`, the generic `Applied<T>`) one place to
+  change form, and turns drift into a compile error rather than an event the
+  user is never shown.
+- **The exported object wraps `Mutex<Client>`.** UniFFI objects are shared and
+  must be `Sync`, and the mutating methods arrive in slice 1 — putting the mutex
+  in now means they land without changing the type the app already holds. A
+  poisoned mutex is fatal rather than recovered from: a panic inside the core
+  left a state machine half-applied, and continuing would mean guessing which.
+- **Blobs cross as `ByteArray`, both directions.** `&[u8]` binds to a direct
+  `java.nio.ByteBuffer`, which would have left the app converting on the way in
+  and not on the way out. One copy of a few kilobytes buys `open(snapshot())`
+  being the obvious thing.
+
+The `core` CI job now compiles `uniffi` and its bindgen dependency tree, which is
+a real slowdown on a job that was previously fast. Worth watching; not worth
+splitting the job over yet.
+
 CI gets a fourth job alongside `core`, `contract` and `topology`:
 
 - **`android`** — installs the NDK, builds the core for one ABI, generates the

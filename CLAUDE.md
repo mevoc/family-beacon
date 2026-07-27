@@ -18,8 +18,11 @@ one `Client`, the versioned state blob, and one error enum for the app — slice
 the pull paths held to slice 1) and `contract-tests` (tier 2, driving the real
 libraries against a real relay in both modes — including a leg where devices
 actually found a family, join it, and are introduced to each other by a relayed
-sealed address). Tiers 1 and 2 run in CI. Not yet written: the UniFFI bindings
-(`beacon-ffi`), and every app. `ARCHITECTURE.md` (the founding vision doc)
+sealed address), and `beacon-ffi` (UniFFI 0.32 scaffolding over the facade:
+mirror types, one exported object, the `uniffi-bindgen` binary target; the
+cdylib cross-compiles to both Android ABIs and generates Kotlin). Tiers 1 and 2
+run in CI. Not yet written: the Gradle build, and every app.
+`ARCHITECTURE.md` (the founding vision doc)
 defines the shape; `core/README.md` maps what exists against what does not, and
 `docs/FamilyBeacon-AndroidPlan.md` is the working plan for the Android client.
 Successor to `../family-beacon-android`, the original SMS-based peer-to-peer
@@ -324,7 +327,17 @@ police is honesty about residual metadata (Sund's threat model) — see #5.
    decision, all specified in `docs/FamilyBeacon-AndroidPlan.md`:
    - **Two crates, not one.** `beacon-client` stays pure Rust so tier 3 can drive
      it headlessly; `beacon-ffi` is scaffolding and must contain no decision a
-     test could fail on.
+     test could fail on. The test of whether that is holding: every function in
+     the binding crate is a call into `beacon-client` wrapped in `From`
+     conversions. When something there wants an `if`, it belongs one layer down —
+     as the seed-length check did, which is why it lives in `Seeds::from_slices`.
+   - **The binding crate mirrors rather than re-exports** (built July 2026,
+     UniFFI 0.32, proc-macro mode, no UDL). Every type crossing the FFI is
+     redeclared with a total `From` conversion. It keeps `uniffi` out of
+     `beacon-client`'s dependency tree, gives the unbindable shapes one place to
+     change form, and makes drift a compile error rather than an event the user
+     is never shown. Accept the duplication: the alternative is not "no
+     duplication", it is a `_ =>` arm that swallows the next message type.
    - **Snapshot in, snapshot out — no callback interfaces across the FFI.**
      Protocol state is one opaque blob, versioned in byte zero, refused rather
      than guessed at if the version is unknown. The encoding behind that byte is

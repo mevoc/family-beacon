@@ -7,7 +7,7 @@ biometrics and local storage stay native per platform.
 
     Family Beacon apps        native per platform — not in this workspace
     ─────────────────────────────────────────────────────────────────
-    beacon-ffi                uniffi scaffolding; cdylib, no logic — not built
+    beacon-ffi                uniffi scaffolding; cdylib, no logic
     ─────────────────────────────────────────────────────────────────
     beacon-client             the composition, driven as one `Client`
     ─────────────────────────────────────────────────────────────────
@@ -38,6 +38,7 @@ one, it is in the wrong crate.
 
 | Crate | Contents |
 | --- | --- |
+| `beacon-ffi` | UniFFI scaffolding over `beacon-client`: mirror types with total `From` conversions, one exported `BeaconClient` object, and the `uniffi-bindgen` binary target. Shape translation and nothing else — when something here wants an `if`, it belongs one layer down. Builds a `cdylib` (`libbeacon_ffi.so`) for the Android ABIs. |
 | `beacon-client` | The composition of `docs/FamilyBeacon-AndroidPlan.md` → The facade crate: identity, roster, sessions, transport and outbox behind one `Client`, the versioned state blob (`open` from bytes, `snapshot` back to bytes), and one error enum the app switches on. Slice 0's surface: enrollment, persistence, and the two membership views. Pure Rust — `beacon-ffi` sits above it and is not built yet. |
 | `beacon-protocol` | Envelope codec and the v1 message-type registry, the consent state machine, the transparency ledger's vocabulary, and the receive path that binds an outcome to its ledger entry. |
 | `sund-client` | The canonical signed-request form (`sigauth`), server addresses and both transport-trust modes (`address`, `agent`), the two-plane API client (`client`), the transport port and its Sund implementation (`transport`, `sund_transport`), an in-memory implementation of the port for tests, the offline outbox (`outbox`), and the session layer: the protocol identity key and its signing domains (`identity`), canonical JSON (`canonical`), the grant-only key bundle (`bundle`), the vodozemac ratchet (`session`) and its persistence (`session_store`). |
@@ -98,13 +99,34 @@ Three more, added with `beacon-client`:
   match. It is the only error in the app whose wording is a security property
   (pinning contract §8.3).
 
+And one added with `beacon-ffi`:
+
+- **The binding crate mirrors rather than re-exports.** Every type crossing the
+  FFI is redeclared there with a total `From` conversion. Not tidiness: it keeps
+  `uniffi` out of `beacon-client`'s dependency tree (the headless tier exists to
+  prove the core needs no binding), it is where unbindable shapes — `[u8; 32]`,
+  `&'static str`, `usize`, the generic `Applied<T>` — change form once instead of
+  per platform, and it makes drift a compile error. The alternative to mirroring
+  is not "no mirroring": it is a `_ =>` arm that silently swallows the next
+  message type somebody adds.
+
+## Generating the bindings
+
+The generator is a binary target in `beacon-ffi`, not a `cargo install`-ed tool,
+so it cannot drift from the `uniffi` version the crate links:
+
+    cargo ndk -t arm64-v8a -t x86_64 -o <jniLibs> build -p beacon-ffi
+    cargo run --bin uniffi-bindgen -- generate \
+        --library <jniLibs>/arm64-v8a/libbeacon_ffi.so \
+        --language kotlin --out-dir <build dir>
+
+The generated Kotlin goes into a build-directory source set and is **not**
+committed — committed bindings rot against the Rust they claim to bind. The
+`.so`'s name is fixed by `[lib] name` in the manifest, because the Gradle copy
+and `System.loadLibrary` both depend on it.
+
 ## What is not here yet
 
-- **UniFFI bindings (`beacon-ffi`).** Still absent, and the split is deliberate:
-  `beacon-client` stays pure Rust so tier 3 can drive it headlessly, and
-  `beacon-ffi` is to contain no decision a test could fail on. They cost NDK
-  cross-compilation, xcframework packaging and wasm-pack in CI, none of which
-  tiers 1–3 need. Next up in slice 0.
 - **The pull paths.** `beacon-client` has no `drain()` or `pump_outbox()` yet;
   both wait on slice 1, for reasons recorded in that crate's `lib.rs` and in
   `docs/FamilyBeacon-AndroidPlan.md` → The API surface. The composition already

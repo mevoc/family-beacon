@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "beacon-client",
+    "beacon-ffi",
     "beacon-protocol",
     "beacon-roster",
     "contract-tests",

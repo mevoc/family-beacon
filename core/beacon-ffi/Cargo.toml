@@ -1,0 +1,30 @@
+[package]
+name = "beacon-ffi"
+version = "0.1.0"
+description = "UniFFI scaffolding over beacon-client: shape translation, and no logic"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+# Fixed explicitly rather than derived from the package name, because this name
+# is load-bearing in two places outside Cargo: the Gradle build copies
+# `libbeacon_ffi.so` into jniLibs, and the generated Kotlin calls
+# `System.loadLibrary("beacon_ffi")`. A rename that Cargo would treat as cosmetic
+# is a `UnsatisfiedLinkError` at app start.
+name = "beacon_ffi"
+# `cdylib` is what ships in the APK; `lib` is what the bindgen binary below and
+# any host-side test link against.
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+beacon-client = { path = "../beacon-client" }
+# For the ledger vocabulary's leaf enums. `beacon-client` re-exports the entry
+# and the event; the types nested inside an event come from here.
+beacon-protocol = { path = "../beacon-protocol" }
+uniffi = { version = "0.32", features = ["cli"] }
+
+[lints]
+workspace = true

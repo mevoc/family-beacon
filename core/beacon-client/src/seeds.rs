@@ -85,6 +85,37 @@ impl Seeds {
         Self { device, identity }
     }
 
+    /// Rebuild from slices, checking both lengths.
+    ///
+    /// The form the FFI needs — a fixed-size array is not a bindable type, so
+    /// what arrives from the app layer is two byte buffers whose length nothing
+    /// on the far side has checked. The check lives here rather than in
+    /// `beacon-ffi` on purpose: the binding crate is meant to hold no decision a
+    /// test could fail on, and "is this the right number of bytes" is exactly
+    /// such a decision.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ClientError::State`] naming which seed was the wrong length.
+    /// Truncating or zero-padding instead would silently produce a *different*
+    /// device identity from the one in the keystore, which surfaces much later
+    /// as unexplained 401s and undecryptable sessions.
+    pub fn from_slices(device: &[u8], identity: &[u8]) -> Result<Self, ClientError> {
+        fn seed(bytes: &[u8], which: &str) -> Result<[u8; SEED_BYTES], ClientError> {
+            <[u8; SEED_BYTES]>::try_from(bytes).map_err(|_| ClientError::State {
+                detail: format!(
+                    "the {which} seed is {} bytes, and a seed is {SEED_BYTES}",
+                    bytes.len()
+                ),
+            })
+        }
+
+        Ok(Self {
+            device: seed(device, "device")?,
+            identity: seed(identity, "identity")?,
+        })
+    }
+
     /// The request-signing seed, to be written to the keystore.
     #[must_use]
     pub fn device_seed(&self) -> &[u8; SEED_BYTES] {
@@ -161,6 +192,33 @@ mod tests {
             "a derivation that returned its input would put the signing seed \
              into every pickle"
         );
+    }
+
+    #[test]
+    fn slices_of_the_right_length_round_trip() {
+        let rebuilt = Seeds::from_slices(&[1u8; SEED_BYTES], &[2u8; SEED_BYTES]).expect("accepted");
+        assert_eq!(rebuilt, seeds());
+    }
+
+    #[test]
+    fn a_short_or_long_seed_is_refused_rather_than_padded() {
+        // Padding would produce a different device identity from the one in the
+        // keystore, and the symptom would arrive weeks later as 401s nobody can
+        // explain.
+        for (device, identity) in [
+            (vec![1u8; SEED_BYTES - 1], vec![2u8; SEED_BYTES]),
+            (vec![1u8; SEED_BYTES], vec![2u8; SEED_BYTES + 1]),
+            (Vec::new(), vec![2u8; SEED_BYTES]),
+        ] {
+            let error = Seeds::from_slices(&device, &identity).expect_err("refused");
+            assert!(matches!(error, ClientError::State { .. }), "{error:?}");
+        }
+    }
+
+    #[test]
+    fn the_refusal_names_which_seed_was_wrong() {
+        let error = Seeds::from_slices(&[1u8; SEED_BYTES], &[2u8; 8]).expect_err("refused");
+        assert!(error.to_string().contains("identity"), "{error}");
     }
 
     #[test]
