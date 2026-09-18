@@ -387,6 +387,20 @@ cmdline-tools 22.0 in favour of an `android` CLI that collects usage metrics by
 default (`--no-metrics` opts out). Prefer `sdkmanager` while it lasts, and if
 the new CLI ends up in CI, pass the flag.
 
+The Sund the phone enrolls against is `docker/compose/compose.dev.yaml`
+(September 2026): one profile A relay, pinned TLS, no proxy, published on every
+interface of the host so both the LAN and the tailnet reach it. Its address is
+`sund://192.168.40.10:5872#<fingerprint>` — or the host's Tailscale address with
+the same fingerprint, since the pin is the relay's own CA and not the hostname.
+The file's header carries the three commands: bring it up, read the
+fingerprint, mint a family with its first invitation. The invitation is
+single-use and defaults to 15 minutes, so mint one per enrollment attempt rather
+than ahead of time. The fixture was proven with the shipping libraries before any
+app code existed: the contract suite's pinned leg passes against it over the LAN
+address. What compose cannot do is the firewall — `ufw` must allow 5872/tcp from
+the LAN and the tailnet, or the phone sees "no connection" against a relay the
+host itself can reach.
+
 Two physical phones are needed from slice 1 — the pairing ceremony is physical
 co-presence, and an emulator pair does not exercise the part that matters. With
 the host headless, they reach it over the tailnet rather than over USB: enable

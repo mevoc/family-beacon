@@ -1,0 +1,51 @@
+# Family Beacon — the development relay on the LAN.
+#
+# Slice 0 of docs/FamilyBeacon-AndroidPlan.md enrolls a phone against "a Sund
+# running on the LAN" in deployment profile A: Sund terminating its own pinned
+# TLS, no proxy, no domain. This is that relay and nothing else — one service,
+# standalone, so it needs none of compose.yaml's domain variables.
+#
+#   docker compose -f docker/compose/compose.dev.yaml up -d
+#
+#   fp=$(docker compose -f docker/compose/compose.dev.yaml exec -T sund-dev \
+#          /sund cert fingerprint --tls-dir /data/certs)
+#   echo "sund://192.168.40.10:5872#$fp"                # the address a phone pairs with
+#   docker compose -f docker/compose/compose.dev.yaml exec -T sund-dev \
+#          /sund admin account create --json --ttl 24h  # a family + its first invitation
+#
+# Why a separate file rather than compose.ci.yaml: that stack binds to
+# 127.0.0.1 on purpose (CI wants nothing reachable) and brings Caddy up on
+# 80/443, which a phone-facing fixture has no use for. This one publishes on
+# every interface — LAN and tailnet — which is the point. Port 5872, so it can
+# coexist with the CI stack's 5870/5871 when the contract suite runs locally.
+#
+# The firewall is outside compose's reach: ufw must allow 5872/tcp from the
+# LAN (and the tailnet) before a phone can connect.
+#
+# The data volume persists across `down`/`up`, so the CA — and therefore the
+# fingerprint every enrolled device pins — survives restarts. `down -v` throws
+# it away and re-pairs every device.
+
+name: family-beacon-dev
+
+services:
+  sund-dev:
+    image: ${SUND_IMAGE:-ghcr.io/mevoc/sund:sha-5843cdd75b290f1b33ea192fcdb8cdbf47898112}
+    restart: unless-stopped
+    command: ["serve"]
+    environment:
+      SUND_ADDR: ":5870"
+      SUND_DB: "/data/sund.db"
+      # Under /data: the image chowns only /data to its nonroot uid, and the
+      # server must be able to write the CA it generates on first start.
+      SUND_TLS_DIR: "/data/certs"
+    volumes:
+      - sund-dev-data:/data
+    ports:
+      - "5872:5870"
+    # No healthcheck: `sund health` probes http:// only and cannot see a
+    # listener that terminates its own TLS (same as sund-pinned in the CI
+    # stack). Readiness is proven by a pinned client completing a handshake.
+
+volumes:
+  sund-dev-data:
