@@ -365,6 +365,14 @@ jobs:
           key: android
 
       - uses: android-actions/setup-android@v3
+        with:
+          # The action's default is "tools platform-tools", and `tools` is the
+          # legacy SDK Tools package Google's repository no longer serves —
+          # sdkmanager fails to find it and the action fails with it. Only
+          # platform-tools is wanted; everything else is pinned in the next
+          # step so that the SDK this job builds against is the one the app
+          # declares, not whatever the action's default happens to be.
+          packages: platform-tools
 
       - name: Install the pinned NDK
         # Pinned to the same version as apps/android/app/build.gradle.kts, which
