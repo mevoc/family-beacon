@@ -114,9 +114,12 @@ Notes on the change from the original sketch (Kotlin/Ktor + PostgreSQL + Redis):
 
 Core API
 
-The server API is Sund's, specified in ../sund (PRD 0.3 and its implementation
-guide). It has two planes: a management plane (device registration, device
-list, revocation, key bundles, push endpoints, invitations) and a transport
+The server API is Sund's, specified in ../sund (PRD 0.4 and its implementation
+guide). Family Beacon provisions `flat` Sund accounts — see
+`docs/FamilyBeacon-Roster.md` → Removal for why the administration model PRD 0.4
+adds is not used here. It has two planes: a management plane (device
+registration, device list, revocation, key bundles, push endpoints, invitations)
+and a transport
 plane (create/send/receive/ack/retire on blind queues). Family Beacon adds no
 server endpoints of its own.
 

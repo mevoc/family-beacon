@@ -474,6 +474,62 @@ promises:
 
 Try mode has step 5's client-side half only, and says so.
 
+Which Sund accounts this requires
+
+Sund PRD 0.4 adds an optional per-account administration model: an account is
+`flat` (the default — every device registers as an admin and may revoke any
+other) or `managed` (revoking another device and minting an invitation are
+restricted to devices holding an `admin` role). Sund ships both; which one an
+account runs is chosen at provisioning and cannot be changed afterwards.
+
+**Family Beacon provisions `flat` accounts.** This was an assumption before 0.4
+existed and is now a requirement, because the modes are not interchangeable
+underneath this spec:
+
+- The rule above — any active device may remove any other — is exactly `flat`.
+  A managed account would refuse step 5 for a member device, and the removal
+  would half-apply: the tombstone is durable and the local effects (1–4) are
+  already done, but the subject's keys and queues survive on the server. That is
+  strictly worse than either mode alone, and nothing in this spec or Sund's
+  recovers from it.
+- **A device may always remove itself** holds in either mode. Sund 0.4 makes
+  self-revocation unconditional for exactly the reason this section gives — it
+  is the only remedy a member has against a privileged peer — so step 5 works
+  for a device removing itself even in a managed account.
+
+The cross-repo conflict, raised not resolved
+
+Sund's managed mode is the "admin" this section argues against, offered as a
+server-enforced option. Sund 0.4 records the conflict on its side (`Sund-PRD.md`
+→ Threat model → Administration quotes this section's argument as the case
+against its own feature) and does not overrule it: `flat` stays Sund's default,
+`managed` is opt-in per account, and Sund takes no position on which a family
+should use. Neither repo has picked a winner, per the workspace convention.
+
+The argument on the other side, recorded because it is not weak: a self-hosted
+family deployment has an operator regardless. Someone installs the server, holds
+the box, renews its certificate and can edit its database; pretending that role
+does not exist does not make the family flat, it just leaves the role
+unmodelled. If there is going to be an admin in practice, there is a case for
+naming one and bounding what they can do rather than distributing removal and
+calling it equality.
+
+What that argument does not yet establish, and what André's decision would have
+to turn on: *operator* privilege over the infrastructure is already conceded here
+— it is why the server's device list is not the authority on membership — and it
+is a different power from *in-app* authority over removal between members. The
+roster rule targets the second. An operator can deny service to anyone, visibly
+and ledgerably; an in-app admin can end a specific person's participation while
+the family keeps working, which is the abusive-member case this section was
+written for. Whether the first justifies modelling the second is the open
+question.
+
+Cost of reopening, so the decision is made with it in view: CLAUDE.md decision #9
+is closed and built. The permissive rule is implemented in `core/beacon-roster`,
+carried in `beacon-protocol`'s `roster` wire types and pinned by
+`shared/protocol/testvectors/roster.json`. Changing it is a code and
+test-vector change across both repos, not a documentation edit.
+
 Re-admission
 
 A removed device that returns re-joins through the full ceremony and receives a

@@ -272,6 +272,15 @@ police is honesty about residual metadata (Sund's threat model) — see #5.
      case: concentrating removal in an admin hands the wrong person a lock, and
      the permissive rule's failure mode (eviction, loud and ledgered) is
      recoverable while the restrictive one's is not.
+     One cross-repo conflict, raised not resolved: Sund PRD 0.4 ships an optional
+     `managed` account mode that gates revocation behind an admin role — the
+     admin this decision argues against. Family Beacon therefore **provisions
+     `flat` Sund accounts**, now a requirement rather than an assumption: a
+     managed account would refuse a member's `revoke` and half-apply a removal.
+     Sund's PRD quotes this decision's argument as the case against its own
+     feature and takes no position; the counter-argument (a self-hosted family
+     has an operator regardless) is recorded in `docs/FamilyBeacon-Roster.md`
+     → Removal. Reopening this costs code and test vectors, not a doc edit.
    - Channels are established automatically on join, consent is not — the channel
      is the pipe and the valve ships closed, so a new member can raise an SOS
      before anyone has tapped Accept.
